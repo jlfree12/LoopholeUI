@@ -232,7 +232,7 @@ private struct NewSessionView: View {
                     labeledField("AI Mode") {
                         Picker("Mode", selection: $model.providerMode) {
                             ForEach(ProviderMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
+                                Text(mode.displayName).tag(mode)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -389,7 +389,7 @@ private struct SessionDetailView: View {
             HStack(spacing: 12) {
                 MetaBadge(text: session.domain.capitalized)
                 MetaBadge(text: "Round \(session.currentRound) of \(session.maxRounds)")
-                MetaBadge(text: session.providerMode.rawValue)
+                MetaBadge(text: session.providerMode.displayName)
                 MetaBadge(text: "\(session.autoResolvedCount) auto-resolved")
                 MetaBadge(text: "\(session.userResolvedCount) user decisions")
             }
@@ -619,16 +619,37 @@ private struct SettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Settings")
                     .font(.system(size: 30, weight: .semibold, design: .serif))
-                Text("Guided Demo mode works immediately. Live Anthropic mode lets the app generate fresh legislators, adversaries, and judges inside the app without Python or Terminal.")
+                Text("Guided Demo mode works immediately. Live AI mode lets the app generate fresh legislators, adversaries, and judges inside the app without Python or Terminal.")
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Live AI")
                         .font(.title3.weight(.semibold))
-                    SecureField("Anthropic API Key", text: $model.anthropicAPIKey)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Model", text: $model.anthropicModel)
-                        .textFieldStyle(.roundedBorder)
+                    Picker("Provider", selection: $model.liveProvider) {
+                        ForEach(LiveProvider.allCases) { provider in
+                            Text(provider.rawValue).tag(provider)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if model.liveProvider == .anthropic {
+                        SecureField("Claude API Key", text: $model.anthropicAPIKey)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Claude model", text: $model.anthropicModel)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Claude keys remain saved even if you switch this toggle to ChatGPT.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        SecureField("ChatGPT API Key", text: $model.openAIAPIKey)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("ChatGPT model", text: $model.openAIModel)
+                            .textFieldStyle(.roundedBorder)
+                        Text("ChatGPT keys remain saved even if you switch this toggle back to Claude.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Stepper(value: $model.casesPerAgent, in: 1...4) {
                         Text("Cases per finder: \(model.casesPerAgent)")
                     }
@@ -736,7 +757,7 @@ private struct CaseCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlax(
+        .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AppPalette.rule, lineWidth: 1)
         )
@@ -785,7 +806,7 @@ private struct EmptyStateView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
         .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlax(
+        .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AppPalette.rule, lineWidth: 1)
         )
@@ -809,7 +830,7 @@ private struct NarrativeBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlax(
+        .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AppPalette.rule, lineWidth: 1)
         )

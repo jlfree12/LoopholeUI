@@ -8,6 +8,9 @@ final class AppModel: ObservableObject {
     @Published var providerMode: ProviderMode = .guidedDemo
     @Published var anthropicAPIKey: String = ""
     @Published var anthropicModel: String = "claude-sonnet-4-20250514"
+    @Published var openAIAPIKey: String = ""
+    @Published var openAIModel: String = "gpt-4.1-mini"
+    @Published var liveProvider: LiveProvider = .anthropic
     @Published var casesPerAgent: Int = 2
     @Published var isWorking = false
     @Published var errorMessage: String?
@@ -16,6 +19,7 @@ final class AppModel: ObservableObject {
 
     init() {
         anthropicAPIKey = SecretsStore.loadAnthropicKey()
+        openAIAPIKey = SecretsStore.loadOpenAIKey()
         sessions = store.loadSessions()
     }
 
@@ -32,6 +36,7 @@ final class AppModel: ObservableObject {
 
     func saveSettings() {
         SecretsStore.saveAnthropicKey(anthropicAPIKey)
+        SecretsStore.saveOpenAIKey(openAIAPIKey)
     }
 
     func showNewSession() {
@@ -77,6 +82,8 @@ final class AppModel: ObservableObject {
             return DemoClient()
         case .anthropic:
             return AnthropicClient(apiKey: anthropicAPIKey, model: anthropicModel)
+        case .openAI:
+            return OpenAIClient(apiKey: openAIAPIKey, model: openAIModel)
         }
     }
 

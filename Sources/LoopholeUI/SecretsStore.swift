@@ -3,14 +3,30 @@ import Security
 
 enum SecretsStore {
     private static let service = "LoopholeUI"
-    private static let account = "anthropic_api_key"
+    private static let anthropicAccount = "anthropic_api_key"
+    private static let openAIAccount = "openai_api_key"
 
     static func saveAnthropicKey(_ value: String) {
-        let data = Data(value.utf8)
+        save(value, account: anthropicAccount)
+    }
+
+    static func loadAnthropicKey() -> String {
+        load(account: anthropicAccount)
+    }
+
+    static func saveOpenAIKey(_ value: String) {
+        save(value, account: openAIAccount)
+    }
+
+    static func loadOpenAIKey() -> String {
+        load(account: openAIAccount)
+    }
+
+    private static func save(_ value: String, account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
         ]
 
         SecItemDelete(query as CFDictionary)
@@ -18,11 +34,11 @@ enum SecretsStore {
         guard !value.isEmpty else { return }
 
         var payload = query
-        payload[kSecValueData as String] = data
+        payload[kSecValueData as String] = Data(value.utf8)
         SecItemAdd(payload as CFDictionary, nil)
     }
 
-    static func loadAnthropicKey() -> String {
+    private static func load(account: String) -> String {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
