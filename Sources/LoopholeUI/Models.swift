@@ -133,6 +133,7 @@ struct SessionRecord: Codable, Identifiable, Equatable {
     var domain: String
     var moralPrinciples: String
     var providerMode: ProviderMode
+    var hasReviewedDraft: Bool
     var currentRound: Int
     var maxRounds: Int
     var stage: WorkflowStage

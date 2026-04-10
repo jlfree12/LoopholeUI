@@ -24,12 +24,24 @@ struct ContentView: View {
     }
 
     private var sidebar: some View {
-        List(selection: $model.selection) {
+        List {
             Section("Workspace") {
-                Label("New Session", systemImage: "sparkles.rectangle.stack")
-                    .tag(Optional.some(SidebarItem.start))
-                Label("Settings", systemImage: "gearshape")
-                    .tag(Optional.some(SidebarItem.settings))
+                sidebarButton(
+                    title: "New Session",
+                    subtitle: "Start a new Loophole analysis",
+                    systemImage: "square.and.pencil",
+                    selection: .start
+                ) {
+                    model.showNewSession()
+                }
+                sidebarButton(
+                    title: "Settings",
+                    subtitle: "Live AI and app preferences",
+                    systemImage: "gearshape",
+                    selection: .settings
+                ) {
+                    model.showSettings()
+                }
             }
 
             Section("Saved Sessions") {
@@ -38,19 +50,58 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(model.sessions) { session in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(session.title)
-                            Text("Round \(session.currentRound) of \(session.maxRounds)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        sidebarButton(
+                            title: session.title,
+                            subtitle: "Round \(session.currentRound) of \(session.maxRounds)",
+                            systemImage: "doc.text",
+                            selection: .session(session.id)
+                        ) {
+                            model.showSession(id: session.id)
                         }
-                        .tag(Optional.some(SidebarItem.session(session.id)))
                     }
                 }
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("Loophole")
+    }
+
+    private func sidebarButton(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        selection: SidebarItem,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSelected(selection) ? Color.white : AppPalette.ink)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(isSelected(selection) ? Color.white.opacity(0.85) : .secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected(selection) ? AppPalette.accent : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func isSelected(_ item: SidebarItem) -> Bool {
+        model.selection == item
     }
 
     @ViewBuilder
@@ -86,35 +137,31 @@ private struct NewSessionView: View {
             }
             .padding(28)
         }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.96, green: 0.97, blue: 0.99),
-                    Color(red: 0.98, green: 0.95, blue: 0.93)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(AppPalette.canvas)
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Stress-test a moral framework without touching Terminal")
-                .font(.system(size: 32, weight: .semibold, design: .rounded))
+                .font(.system(size: 30, weight: .semibold, design: .serif))
+                .foregroundStyle(AppPalette.ink)
             Text("This app walks the user through the full Loophole method: write principles, convert them into a legal code, attack that code with loophole and overreach cases, then resolve or escalate the hardest tensions.")
                 .font(.title3)
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
                 ForEach(WorkflowStage.allCases.filter { $0 != .onboarding && $0 != .completed }, id: \.rawValue) { stage in
-                    StageChip(title: stage.title, isActive: false)
+                    StageChip(title: stage.title, subtitle: stagePreview(stage), state: .upcoming)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
     }
 
     private var templates: some View {
@@ -132,6 +179,7 @@ private struct NewSessionView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(template.title)
                                 .font(.headline)
+                                .foregroundStyle(AppPalette.ink)
                             Text(template.prompt)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -139,11 +187,15 @@ private struct NewSessionView: View {
                                 .font(.caption.weight(.medium))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(Color.accentColor.opacity(0.12), in: Capsule())
+                                .background(AppPalette.accent.opacity(0.10), in: Capsule())
                         }
                         .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
                         .padding(18)
-                        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(AppPalette.rule, lineWidth: 1)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -198,10 +250,14 @@ private struct NewSessionView: View {
                     Text("Write the user’s principles in plain language. The app will pass them into the Legislator exactly as written, so specificity helps.")
                         .foregroundStyle(.secondary)
                     TextEditor(text: $model.draft.principles)
-                        .font(.body)
+                        .font(AppTypography.documentBody)
                         .frame(minHeight: 250)
                         .padding(12)
-                        .background(Color.white.opacity(0.86), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(AppPalette.rule, lineWidth: 1)
+                        )
                 }
             }
 
@@ -218,7 +274,11 @@ private struct NewSessionView: View {
             }
         }
         .padding(24)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
     }
 
     private var principleGuidance: some View {
@@ -244,7 +304,11 @@ private struct NewSessionView: View {
             }
         }
         .padding(24)
-        .background(Color.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
     }
 
     private func labeledField<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -264,7 +328,26 @@ private struct NewSessionView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(AppPalette.accent.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func stagePreview(_ stage: WorkflowStage) -> String {
+        switch stage {
+        case .drafting:
+            return "Legislator"
+        case .findingLoopholes:
+            return "Legal but wrong"
+        case .findingOverreach:
+            return "Illegal but okay"
+        case .judging:
+            return "Repair or reject"
+        case .waitingForDecision:
+            return "Escalate"
+        case .roundComplete:
+            return "Review"
+        case .onboarding, .completed:
+            return ""
+        }
     }
 }
 
@@ -278,6 +361,7 @@ private struct SessionDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
+                loopNarrative
                 stageBoard
                 if let escalation = session.activeEscalation {
                     escalationPanel(escalation)
@@ -289,13 +373,19 @@ private struct SessionDetailView: View {
             }
             .padding(28)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(AppPalette.canvas)
+        .onAppear {
+            if session.currentRound == 0 && selectedPanel == 0 {
+                selectedPanel = session.hasReviewedDraft ? 0 : 2
+            }
+        }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(session.title)
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .font(.system(size: 30, weight: .semibold, design: .serif))
+                .foregroundStyle(AppPalette.ink)
             HStack(spacing: 12) {
                 MetaBadge(text: session.domain.capitalized)
                 MetaBadge(text: "Round \(session.currentRound) of \(session.maxRounds)")
@@ -308,48 +398,72 @@ private struct SessionDetailView: View {
         }
     }
 
+    private var loopNarrative: some View {
+        let summary = guidanceSummary
+        return HStack(alignment: .top, spacing: 20) {
+            NarrativeBlock(title: "Previous", text: summary.previous)
+            NarrativeBlock(title: "Current", text: summary.current)
+            NarrativeBlock(title: "Next", text: summary.next)
+        }
+    }
+
     private var stageBoard: some View {
         HStack(spacing: 12) {
-            ForEach([
-                WorkflowStage.drafting,
-                .findingLoopholes,
-                .findingOverreach,
-                .judging,
-                .waitingForDecision,
-                .roundComplete
-            ], id: \.rawValue) { stage in
-                StageChip(title: stage.title, isActive: session.stage == stage)
+            ForEach(loopStages, id: \.rawValue) { stage in
+                StageChip(
+                    title: stage.title,
+                    subtitle: stageSubtitle(stage),
+                    state: chipState(for: stage)
+                )
             }
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppPalette.sheet)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
         )
     }
 
     private var actionPanel: some View {
         HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(session.stage == .completed ? "Session complete" : "Continue the loop")
+                Text(actionHeadline)
                     .font(.title3.weight(.semibold))
-                Text(session.stage == .completed
-                     ? "The code has been tightened through every planned round. Review the final code, cases, and precedents below."
-                     : "Run the next step to let the adversarial agents search for new failures and send them to the Judge.")
+                Text(actionDescription)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Button(model.isWorking ? "Working…" : session.currentRound == 0 ? "Start First Review" : "Continue Review") {
-                model.runNextStep()
+            HStack(spacing: 10) {
+                Button(primaryActionLabel) {
+                    primaryAction()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isWorking || session.stage == .completed)
+
+                if shouldShowShortcut {
+                    Button(model.isWorking ? "Working…" : "Skip Ahead") {
+                        model.runNextStep()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+                    .disabled(model.isWorking || session.stage == .completed)
+                    .help("Shortcut: skip the guided pacing and jump directly into adversarial review.")
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isWorking || session.stage == .completed)
         }
         .padding(22)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
     }
 
     private func escalationPanel(_ escalation: CaseRecord) -> some View {
@@ -369,9 +483,14 @@ private struct SessionDetailView: View {
             }
 
             TextEditor(text: $decisionText)
+                .font(AppTypography.documentBody)
                 .frame(minHeight: 130)
                 .padding(12)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(AppPalette.rule, lineWidth: 1)
+                )
 
             HStack {
                 Button(model.isWorking ? "Applying…" : "Use This Decision") {
@@ -460,9 +579,14 @@ private struct SessionDetailView: View {
                             .font(.headline)
                         ForEach(Array(session.userClarifications.enumerated()), id: \.offset) { _, note in
                             Text(note)
+                                .font(AppTypography.documentBody)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(14)
-                                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(AppPalette.rule, lineWidth: 1)
+                                )
                         }
                     }
                 }
@@ -472,9 +596,14 @@ private struct SessionDetailView: View {
                         .font(.headline)
                     ForEach(session.cases.filter { $0.status == .autoResolved || $0.status == .userResolved }) { item in
                         Text("\(item.title): \(item.resolutionSummary ?? item.reasoning)")
+                            .font(AppTypography.documentBody)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(14)
-                            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(AppPalette.rule, lineWidth: 1)
+                            )
                     }
                 }
             }
@@ -489,7 +618,7 @@ private struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Settings")
-                    .font(.system(size: 30, weight: .semibold, design: .rounded))
+                    .font(.system(size: 30, weight: .semibold, design: .serif))
                 Text("Guided Demo mode works immediately. Live Anthropic mode lets the app generate fresh legislators, adversaries, and judges inside the app without Python or Terminal.")
                     .foregroundStyle(.secondary)
 
@@ -510,24 +639,47 @@ private struct SettingsView: View {
                     .buttonStyle(.borderedProminent)
                 }
                 .padding(24)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(AppPalette.rule, lineWidth: 1)
+                )
             }
             .padding(28)
         }
+        .background(AppPalette.canvas)
     }
 }
 
 private struct StageChip: View {
     let title: String
-    let isActive: Bool
+    let subtitle: String
+    let state: StageChipState
 
     var body: some View {
-        Text(title)
-            .font(.subheadline.weight(.medium))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(isActive ? Color.accentColor : Color.secondary.opacity(0.12), in: Capsule())
-            .foregroundStyle(isActive ? Color.white : Color.primary)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+            Text(subtitle)
+                .font(.system(size: 10))
+                .foregroundStyle(state == .current ? Color.white.opacity(0.86) : .secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .foregroundStyle(state == .current ? Color.white : AppPalette.ink)
+    }
+
+    private var backgroundColor: Color {
+        switch state {
+        case .current:
+            return AppPalette.accent
+        case .complete:
+            return AppPalette.complete
+        case .upcoming:
+            return AppPalette.card
+        }
     }
 }
 
@@ -539,7 +691,7 @@ private struct MetaBadge: View {
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .background(AppPalette.card, in: Capsule())
     }
 }
 
@@ -568,20 +720,26 @@ private struct CaseCard: View {
             }
 
             Text(caseRecord.title)
-                .font(.headline)
+                .font(AppTypography.cardTitle)
             Text(caseRecord.scenario)
+                .font(AppTypography.documentBody)
             Text(caseRecord.explanation)
+                .font(AppTypography.documentBody)
                 .foregroundStyle(.secondary)
 
             if let summary = caseRecord.resolutionSummary {
                 Divider()
                 Text(summary)
-                    .font(.subheadline)
+                    .font(AppTypography.documentBody)
             }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlax(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
     }
 
     private var chipColor: Color {
@@ -599,12 +757,17 @@ private struct ReadableDocument: View {
     var body: some View {
         ScrollView {
             Text(text)
+                .font(AppTypography.documentBody)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
                 .padding(18)
         }
         .frame(minHeight: 260)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
     }
 }
 
@@ -621,6 +784,249 @@ private struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlax(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
+    }
+}
+
+private struct NarrativeBlock: View {
+    let title: String
+    let text: String
+
+    var bodyView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(AppTypography.documentBody)
+                .foregroundStyle(AppPalette.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlax(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
+    }
+
+    var body: some View {
+        bodyView
+    }
+}
+
+private enum StageChipState: Equatable {
+    case complete
+    case current
+    case upcoming
+}
+
+private enum AppPalette {
+    static let canvas = Color(nsColor: NSColor(calibratedRed: 0.94, green: 0.94, blue: 0.92, alpha: 1))
+    static let sheet = Color(nsColor: NSColor(calibratedRed: 0.985, green: 0.98, blue: 0.965, alpha: 1))
+    static let paper = Color.white
+    static let card = Color(nsColor: NSColor(calibratedWhite: 0.93, alpha: 1))
+    static let rule = Color(nsColor: NSColor(calibratedWhite: 0.80, alpha: 1))
+    static let accent = Color(nsColor: NSColor(calibratedRed: 0.17, green: 0.23, blue: 0.33, alpha: 1))
+    static let complete = Color(nsColor: NSColor(calibratedRed: 0.78, green: 0.82, blue: 0.85, alpha: 1))
+    static let ink = Color(nsColor: NSColor(calibratedRed: 0.16, green: 0.16, blue: 0.18, alpha: 1))
+}
+
+private enum AppTypography {
+    static let documentBody = serif(size: 17)
+    static let cardTitle = serif(size: 19, weight: .semibold)
+
+    private static func serif(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        if NSFont(name: "Times New Roman", size: size) != nil {
+            return .custom("Times New Roman", size: size).weight(weight)
+        }
+
+        if NSFont(name: "Times", size: size) != nil {
+            return .custom("Times", size: size).weight(weight)
+        }
+
+        return .system(size: size, weight: weight, design: .serif)
+    }
+}
+
+private extension SessionDetailView {
+    var loopStages: [WorkflowStage] {
+        [.onboarding, .drafting, .findingLoopholes, .findingOverreach, .judging, .waitingForDecision]
+    }
+
+    var actionHeadline: String {
+        if session.stage == .completed {
+            return "Session complete"
+        }
+        if session.currentRound == 0 && !session.hasReviewedDraft {
+            return "Begin with the Legislator's draft"
+        }
+        if session.currentRound == 0 && session.stage == .drafting {
+            return "Continue into the first adversarial round"
+        }
+        if session.stage == .roundComplete {
+            return "Round complete"
+        }
+        return "Continue the loop"
+    }
+
+    var actionDescription: String {
+        if session.stage == .completed {
+            return "The code has been tightened through every planned round. Review the final code, cases, and precedents below."
+        }
+        if session.currentRound == 0 && !session.hasReviewedDraft {
+            return "The user should first read the legislation the app produced from their moral principles. After that, the app can begin testing it for loopholes and overreach."
+        }
+        if session.currentRound == 0 && session.stage == .drafting {
+            return "Next, the Loophole Finder and Overreach Finder will probe this code. The Judge will then decide whether each failure can be fixed or must be escalated."
+        }
+        if session.stage == .roundComplete {
+            return "This round's fixes are in place. The next round will search for new edge cases under the revised code."
+        }
+        return "Proceed through the next step of the Loophole loop."
+    }
+
+    var primaryActionLabel: String {
+        if session.currentRound == 0 && !session.hasReviewedDraft {
+            return "Start First Review"
+        }
+        if session.currentRound == 0 && session.stage == .drafting {
+            return model.isWorking ? "Working…" : "Continue to Loophole Finder"
+        }
+        return model.isWorking ? "Working…" : "Continue Review"
+    }
+
+    var shouldShowShortcut: Bool {
+        session.currentRound == 0 && !session.hasReviewedDraft
+    }
+
+    func primaryAction() {
+        if session.currentRound == 0 && !session.hasReviewedDraft {
+            selectedPanel = 2
+            model.markDraftReviewed()
+            return
+        }
+
+        model.runNextStep()
+    }
+
+    var guidanceSummary: (previous: String, current: String, next: String) {
+        if session.currentRound == 0 && !session.hasReviewedDraft {
+            return (
+                previous: "The user entered moral principles and the app converted them into a draft legal code.",
+                current: "You are now reading the Legislator's draft so you can see exactly what rules were created.",
+                next: "After this, the Loophole Finder will search for legal-but-wrong conduct, and the Overreach Finder will search for forbidden-but-acceptable conduct."
+            )
+        }
+
+        switch session.stage {
+        case .drafting:
+            return (
+                previous: "The Legislator has produced a first-pass code from the user's principles.",
+                current: "You are at the handoff between the drafted code and the first adversarial test round.",
+                next: "The app will generate loophole and overreach cases, then send them to the Judge."
+            )
+        case .findingLoopholes:
+            return (
+                previous: "The user reviewed the drafted code.",
+                current: "The Loophole Finder is searching for conduct that remains legal even though it violates the user's values.",
+                next: "The Overreach Finder will then look for conduct the code wrongly prohibits."
+            )
+        case .findingOverreach:
+            return (
+                previous: "The Loophole Finder generated adversarial edge cases.",
+                current: "The Overreach Finder is searching for morally acceptable conduct the code blocks.",
+                next: "The Judge will examine whether these failures can be repaired without contradiction."
+            )
+        case .judging:
+            return (
+                previous: "Both adversarial finders have completed their challenge cases.",
+                current: "The Judge is deciding whether each problem can be patched consistently.",
+                next: "Resolvable cases will update the code. Conflicts will be escalated back to the user."
+            )
+        case .waitingForDecision:
+            return (
+                previous: "The Judge found a conflict that could not be cleanly resolved.",
+                current: "The user must now make a plain-language policy choice that becomes precedent.",
+                next: "That decision will be folded back into the code before the loop continues."
+            )
+        case .roundComplete:
+            return (
+                previous: "This round's cases were reviewed and the code was revised where possible.",
+                current: "You are reviewing the updated state of the code, cases, and precedents.",
+                next: session.currentRound >= session.maxRounds ? "The workflow will end after this review." : "The next round will launch another set of loophole and overreach challenges."
+            )
+        case .completed:
+            return (
+                previous: "All planned rounds are complete.",
+                current: "You are looking at the final record of principles, code, cases, and precedents.",
+                next: "No further automated steps remain unless you start a new session."
+            )
+        case .onboarding:
+            return (
+                previous: "The user has not yet started a session.",
+                current: "The app is waiting for moral principles.",
+                next: "The Legislator will draft the initial code."
+            )
+        }
+    }
+
+    func chipState(for stage: WorkflowStage) -> StageChipState {
+        let currentIndex = currentLoopIndex
+        let stageIndex = loopStages.firstIndex(of: stage) ?? 0
+        if stageIndex < currentIndex {
+            return .complete
+        }
+        if stageIndex == currentIndex {
+            return .current
+        }
+        return .upcoming
+    }
+
+    var currentLoopIndex: Int {
+        if session.currentRound == 0 && !session.hasReviewedDraft {
+            return 1
+        }
+
+        switch session.stage {
+        case .onboarding:
+            return 0
+        case .drafting:
+            return 1
+        case .findingLoopholes:
+            return 2
+        case .findingOverreach:
+            return 3
+        case .judging, .roundComplete, .completed:
+            return 4
+        case .waitingForDecision:
+            return 5
+        }
+    }
+
+    func stageSubtitle(_ stage: WorkflowStage) -> String {
+        switch stage {
+        case .onboarding:
+            return "Principles"
+        case .drafting:
+            return "Legislator"
+        case .findingLoopholes:
+            return "Legal but wrong"
+        case .findingOverreach:
+            return "Illegal but okay"
+        case .judging:
+            return "Repair or reject"
+        case .waitingForDecision:
+            return "Escalate"
+        case .roundComplete:
+            return "Review"
+        case .completed:
+            return "Done"
+        }
     }
 }

@@ -34,6 +34,25 @@ final class AppModel: ObservableObject {
         SecretsStore.saveAnthropicKey(anthropicAPIKey)
     }
 
+    func showNewSession() {
+        selection = .start
+    }
+
+    func showSettings() {
+        selection = .settings
+    }
+
+    func showSession(id: String) {
+        selection = .session(id)
+    }
+
+    func markDraftReviewed() {
+        guard var session = selectedSession else { return }
+        guard !session.hasReviewedDraft else { return }
+        session.hasReviewedDraft = true
+        persist(session)
+    }
+
     func startSession() {
         Task {
             await runStartSession()
@@ -82,6 +101,7 @@ final class AppModel: ObservableObject {
                 domain: draft.domain.trimmingCharacters(in: .whitespacesAndNewlines),
                 moralPrinciples: draft.principles.trimmingCharacters(in: .whitespacesAndNewlines),
                 providerMode: providerMode,
+                hasReviewedDraft: false,
                 currentRound: 0,
                 maxRounds: draft.maxRounds,
                 stage: .drafting,
