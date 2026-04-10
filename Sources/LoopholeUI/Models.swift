@@ -27,7 +27,7 @@ enum ProviderMode: String, Codable, CaseIterable, Identifiable {
     var subtitle: String {
         switch self {
         case .guidedDemo:
-            return "Lets someone experience the full loop immediately with curated mock AI outputs."
+            return "Walks you through the full loop with curated examples, so you can learn the method without setting up billing first."
         case .anthropic:
             return "Runs the live Loophole workflow with Claude so each round is generated fresh."
         case .openAI:
@@ -61,6 +61,14 @@ enum LiveProvider: String, CaseIterable, Identifiable {
             self = .anthropic
         }
     }
+}
+
+enum SettingsProviderChoice: String, Codable, CaseIterable, Identifiable {
+    case anthropic = "Claude"
+    case openAI = "ChatGPT"
+    case other = "Other"
+
+    var id: String { rawValue }
 }
 
 enum WorkflowStage: String, Codable, CaseIterable {
@@ -97,7 +105,7 @@ enum WorkflowStage: String, Codable, CaseIterable {
     var explanation: String {
         switch self {
         case .onboarding:
-            return "Capture the user’s domain and moral principles in plain language."
+            return "Capture the topic and moral principles in plain language."
         case .drafting:
             return "Turn the principles into a formal legal code."
         case .findingLoopholes:
@@ -107,7 +115,7 @@ enum WorkflowStage: String, Codable, CaseIterable {
         case .judging:
             return "Try to patch the code without breaking previous decisions."
         case .waitingForDecision:
-            return "Escalate true tensions in the user’s framework back to the user."
+            return "Bring true tensions in the framework back for a human judgment call."
         case .roundComplete:
             return "Summarize what changed and invite the next round."
         case .completed:
@@ -174,6 +182,8 @@ struct SessionRecord: Codable, Identifiable, Equatable {
     var domain: String
     var moralPrinciples: String
     var providerMode: ProviderMode
+    var isPinned: Bool
+    var isArchived: Bool
     var hasReviewedDraft: Bool
     var currentRound: Int
     var maxRounds: Int
@@ -209,6 +219,8 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         case domain
         case moralPrinciples
         case providerMode
+        case isPinned
+        case isArchived
         case hasReviewedDraft
         case currentRound
         case maxRounds
@@ -229,6 +241,8 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         domain: String,
         moralPrinciples: String,
         providerMode: ProviderMode,
+        isPinned: Bool,
+        isArchived: Bool,
         hasReviewedDraft: Bool,
         currentRound: Int,
         maxRounds: Int,
@@ -247,6 +261,8 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         self.domain = domain
         self.moralPrinciples = moralPrinciples
         self.providerMode = providerMode
+        self.isPinned = isPinned
+        self.isArchived = isArchived
         self.hasReviewedDraft = hasReviewedDraft
         self.currentRound = currentRound
         self.maxRounds = maxRounds
@@ -268,6 +284,8 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         domain = try container.decode(String.self, forKey: .domain)
         moralPrinciples = try container.decode(String.self, forKey: .moralPrinciples)
         providerMode = try container.decode(ProviderMode.self, forKey: .providerMode)
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
         hasReviewedDraft = try container.decodeIfPresent(Bool.self, forKey: .hasReviewedDraft) ?? false
         currentRound = try container.decode(Int.self, forKey: .currentRound)
         maxRounds = try container.decode(Int.self, forKey: .maxRounds)
@@ -319,7 +337,7 @@ enum LoopholeClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Add the selected live AI API key in Settings before starting a live session."
+            return "Add the API key for your selected live AI in Settings before starting a live session."
         case .malformedResponse:
             return "The AI response could not be understood. Try the round again."
         case .invalidState(let message):

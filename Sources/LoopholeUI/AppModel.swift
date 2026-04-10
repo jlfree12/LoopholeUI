@@ -2,8 +2,18 @@ import Foundation
 
 @MainActor
 final class AppModel: ObservableObject {
+    private enum SettingsKeys {
+        static let selectedProvider = "settings.selectedProvider"
+        static let anthropicModel = "settings.anthropicModel"
+        static let openAIModel = "settings.openAIModel"
+        static let otherProviderLabel = "settings.otherProviderLabel"
+        static let otherProviderNotes = "settings.otherProviderNotes"
+        static let casesPerAgent = "settings.casesPerAgent"
+    }
+
     @Published var sessions: [SessionRecord] = []
     @Published var selection: SidebarItem? = .start
+    @Published var sessionSearchText: String = ""
     @Published var draft = SessionDraft()
     @Published var providerMode: ProviderMode = .guidedDemo
     @Published var anthropicAPIKey: String = ""
@@ -11,6 +21,9 @@ final class AppModel: ObservableObject {
     @Published var openAIAPIKey: String = ""
     @Published var openAIModel: String = "gpt-4.1-mini"
     @Published var liveProvider: LiveProvider = .anthropic
+    @Published var settingsProviderChoice: SettingsProviderChoice = .anthropic
+    @Published var otherProviderLabel: String = ""
+    @Published var otherProviderNotes: String = ""
     @Published var casesPerAgent: Int = 2
     @Published var isWorking = false
     @Published var errorMessage: String?
@@ -18,14 +31,41 @@ final class AppModel: ObservableObject {
     private let store = SessionStore()
 
     init() {
+        let defaults = UserDefaults.standard
         anthropicAPIKey = SecretsStore.loadAnthropicKey()
         openAIAPIKey = SecretsStore.loadOpenAIKey()
-        sessions = store.loadSessions()
+        anthropicModel = defaults.string(forKey: SettingsKeys.anthropicModel) ?? anthropicModel
+        openAIModel = defaults.string(forKey: SettingsKeys.openAIModel) ?? openAIModel
+        if let rawValue = defaults.string(forKey: SettingsKeys.selectedProvider),
+           let selection = SettingsProviderChoice(rawValue: rawValue) {
+            settingsProviderChoice = selection
+        }
+        if settingsProviderChoice == .anthropic {
+            liveProvider = .anthropic
+        } else if settingsProviderChoice == .openAI {
+            liveProvider = .openAI
+        }
+        otherProviderLabel = defaults.string(forKey: SettingsKeys.otherProviderLabel) ?? ""
+        otherProviderNotes = defaults.string(forKey: SettingsKeys.otherProviderNotes) ?? ""
+        let storedCasesPerAgent = defaults.integer(forKey: SettingsKeys.casesPerAgent)
+        if storedCasesPerAgent > 0 {
+            casesPerAgent = storedCasesPerAgent
+        }
+
+        sessions = sortedSessions(store.loadSessions())
     }
 
     var selectedSession: SessionRecord? {
         guard case let .session(id) = selection else { return nil }
         return sessions.first(where: { $0.id == id })
+    }
+
+    var visibleActiveSessions: [SessionRecord] {
+        filterSessions(isArchived: false)
+    }
+
+    var visibleArchivedSessions: [SessionRecord] {
+        filterSessions(isArchived: true)
     }
 
     func applyTemplate(_ template: PrincipleTemplate) {
@@ -35,8 +75,20 @@ final class AppModel: ObservableObject {
     }
 
     func saveSettings() {
+        let defaults = UserDefaults.standard
         SecretsStore.saveAnthropicKey(anthropicAPIKey)
         SecretsStore.saveOpenAIKey(openAIAPIKey)
+        if settingsProviderChoice == .anthropic {
+            liveProvider = .anthropic
+        } else if settingsProviderChoice == .openAI {
+            liveProvider = .openAI
+        }
+        defaults.set(anthropicModel, forKey: SettingsKeys.anthropicModel)
+        defaults.set(openAIModel, forKey: SettingsKeys.openAIModel)
+        defaults.set(settingsProviderChoice.rawValue, forKey: SettingsKeys.selectedProvider)
+        defaults.set(otherProviderLabel, forKey: SettingsKeys.otherProviderLabel)
+        defaults.set(otherProviderNotes, forKey: SettingsKeys.otherProviderNotes)
+        defaults.set(casesPerAgent, forKey: SettingsKeys.casesPerAgent)
     }
 
     func showNewSession() {
@@ -49,6 +101,57 @@ final class AppModel: ObservableObject {
 
     func showSession(id: String) {
         selection = .session(id)
+    }
+
+    func beginFirstReview() {
+        Task {
+            guard var session = selectedSession else { return }
+            guard !session.hasReviewedDraft else { return }
+            session.hasReviewedDraft = true
+            persist(session)
+            await continueSession()
+        }
+    }
+
+    func renameSession(id: String, to title: String) {
+        guard var session = sessions.first(where: { $0.id == id }) else { return }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        session.title = trimmed
+        persist(session)
+    }
+
+    func duplicateSession(id: String) {
+        guard var session = sessions.first(where: { $0.id == id }) else { return }
+        session.id = sessionID(for: session.domain)
+        session.title = session.title + " Copy"
+        session.createdAt = Date()
+        session.updatedAt = Date()
+        persist(session)
+        selection = .session(session.id)
+    }
+
+    func togglePinned(id: String) {
+        guard var session = sessions.first(where: { $0.id == id }) else { return }
+        session.isPinned.toggle()
+        persist(session)
+    }
+
+    func toggleArchived(id: String) {
+        guard var session = sessions.first(where: { $0.id == id }) else { return }
+        session.isArchived.toggle()
+        persist(session)
+        if session.isArchived, selection == .session(id) {
+            selection = .start
+        }
+    }
+
+    func deleteSession(id: String) {
+        sessions.removeAll { $0.id == id }
+        try? store.delete(id: id)
+        if selection == .session(id) {
+            selection = .start
+        }
     }
 
     func markDraftReviewed() {
@@ -94,7 +197,7 @@ final class AppModel: ObservableObject {
         }
 
         guard !draft.principles.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Add the user’s moral principles so the Legislator has something to draft from."
+            errorMessage = "Add your moral principles so the Legislator has something concrete to draft from."
             return
         }
 
@@ -108,6 +211,8 @@ final class AppModel: ObservableObject {
                 domain: draft.domain.trimmingCharacters(in: .whitespacesAndNewlines),
                 moralPrinciples: draft.principles.trimmingCharacters(in: .whitespacesAndNewlines),
                 providerMode: providerMode,
+                isPinned: false,
+                isArchived: false,
                 hasReviewedDraft: false,
                 currentRound: 0,
                 maxRounds: draft.maxRounds,
@@ -251,7 +356,7 @@ final class AppModel: ObservableObject {
         guard var session = selectedSession else { return }
         guard let escalation = session.activeEscalation else { return }
         guard !decision.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Add a short decision so the app can convert it into binding precedent."
+            errorMessage = "Add a short ruling so the app can turn it into a precedent for later rounds."
             return
         }
 
@@ -294,6 +399,7 @@ final class AppModel: ObservableObject {
         }
 
         try? store.save(updated)
+        sessions = sortedSessions(sessions)
     }
 
     private func updateCase(in session: inout SessionRecord, _ id: String, change: (inout CaseRecord) -> Void) {
@@ -309,5 +415,30 @@ final class AppModel: ObservableObject {
 
     private func resetDraft() {
         draft = SessionDraft()
+    }
+
+    private func filterSessions(isArchived: Bool) -> [SessionRecord] {
+        let trimmedQuery = sessionSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return sortedSessions(sessions)
+            .filter { $0.isArchived == isArchived }
+            .filter { session in
+                guard !trimmedQuery.isEmpty else { return true }
+                let haystacks = [
+                    session.title,
+                    session.domain,
+                    session.moralPrinciples
+                ]
+                return haystacks.contains { $0.localizedCaseInsensitiveContains(trimmedQuery) }
+            }
+    }
+
+    private func sortedSessions(_ records: [SessionRecord]) -> [SessionRecord] {
+        records.sorted { lhs, rhs in
+            if lhs.isPinned != rhs.isPinned {
+                return lhs.isPinned && !rhs.isPinned
+            }
+            return lhs.updatedAt > rhs.updatedAt
+        }
     }
 }

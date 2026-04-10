@@ -34,6 +34,12 @@ struct SessionStore {
         rootURL.appendingPathComponent("\(id).json")
     }
 
+    func delete(id: String) throws {
+        let fileURL = fileURL(for: id)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        try FileManager.default.removeItem(at: fileURL)
+    }
+
     private func ensureFolder() {
         try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true, attributes: nil)
     }

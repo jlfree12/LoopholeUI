@@ -3,6 +3,10 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var model: AppModel
+    @State private var renameTarget: SessionRecord?
+    @State private var renameDraftTitle = ""
+    @State private var deleteTarget: SessionRecord?
+    @State private var showingAPIHelp = false
 
     var body: some View {
         NavigationSplitView {
@@ -11,6 +15,24 @@ struct ContentView: View {
             detail
         }
         .navigationSplitViewStyle(.balanced)
+        .sheet(item: $renameTarget) { session in
+            RenameSessionSheet(
+                currentTitle: session.title,
+                draftTitle: $renameDraftTitle,
+                onCancel: {
+                    renameTarget = nil
+                    renameDraftTitle = ""
+                },
+                onSave: {
+                    model.renameSession(id: session.id, to: renameDraftTitle)
+                    renameTarget = nil
+                    renameDraftTitle = ""
+                }
+            )
+        }
+        .sheet(isPresented: $showingAPIHelp) {
+            APIInstructionsSheet()
+        }
         .alert("Something needs attention", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
@@ -21,6 +43,21 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .alert("Delete Session?", isPresented: Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        ), actions: {
+            Button("Delete", role: .destructive) {
+                guard let session = deleteTarget else { return }
+                model.deleteSession(id: session.id)
+                deleteTarget = nil
+            }
+            Button("Cancel", role: .cancel) {
+                deleteTarget = nil
+            }
+        }, message: {
+            Text("This permanently removes the saved session from this Mac.")
+        })
     }
 
     private var sidebar: some View {
@@ -44,26 +81,66 @@ struct ContentView: View {
                 }
             }
 
+            Section("Find a Saved Session") {
+                SearchField(text: $model.sessionSearchText, placeholder: "Search by title, domain, or principles")
+                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+            }
+
             Section("Saved Sessions") {
-                if model.sessions.isEmpty {
-                    Text("No sessions yet")
+                if model.visibleActiveSessions.isEmpty && model.visibleArchivedSessions.isEmpty {
+                    Text("No saved analyses yet")
+                        .foregroundStyle(.secondary)
+                } else if model.visibleActiveSessions.isEmpty {
+                    Text("No active sessions match this search.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(model.sessions) { session in
-                        sidebarButton(
-                            title: session.title,
-                            subtitle: "Round \(session.currentRound) of \(session.maxRounds)",
-                            systemImage: "doc.text",
-                            selection: .session(session.id)
-                        ) {
-                            model.showSession(id: session.id)
-                        }
+                    ForEach(model.visibleActiveSessions) { session in
+                        sessionSidebarButton(session)
+                    }
+                }
+            }
+
+            if !model.visibleArchivedSessions.isEmpty {
+                Section("Archived") {
+                    ForEach(model.visibleArchivedSessions) { session in
+                        sessionSidebarButton(session)
                     }
                 }
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("Loophole")
+        .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 360)
+    }
+
+    private func sessionSidebarButton(_ session: SessionRecord) -> some View {
+        sidebarButton(
+            title: session.title,
+            subtitle: session.isPinned ? "Pinned • Round \(session.currentRound) of \(session.maxRounds)" : "Round \(session.currentRound) of \(session.maxRounds)",
+            systemImage: session.isPinned ? "pin.fill" : "doc.text",
+            selection: .session(session.id)
+        ) {
+            model.showSession(id: session.id)
+        }
+        .contextMenu {
+            Button("Rename") {
+                renameDraftTitle = session.title
+                renameTarget = session
+            }
+            Button("Duplicate") {
+                model.duplicateSession(id: session.id)
+            }
+            Button(session.isPinned ? "Unpin" : "Pin") {
+                model.togglePinned(id: session.id)
+            }
+            Button(session.isArchived ? "Restore" : "Archive") {
+                model.toggleArchived(id: session.id)
+            }
+            Divider()
+            Button("Delete", role: .destructive) {
+                deleteTarget = session
+            }
+        }
     }
 
     private func sidebarButton(
@@ -83,21 +160,35 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
                     Text(subtitle)
                         .font(.system(size: 11))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(isSelected(selection) ? Color.white.opacity(0.85) : .secondary)
                 }
 
                 Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(isSelected(selection) ? Color.white.opacity(0.72) : AppPalette.ink.opacity(0.45))
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected(selection) ? AppPalette.accent : Color.clear)
+                    .fill(isSelected(selection) ? AppPalette.accent : AppPalette.card.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isSelected(selection) ? AppPalette.accent.opacity(0.9) : AppPalette.rule.opacity(0.75), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func isSelected(_ item: SidebarItem) -> Bool {
@@ -110,7 +201,9 @@ struct ContentView: View {
         case .start:
             NewSessionView(model: model)
         case .settings:
-            SettingsView(model: model)
+            SettingsView(model: model, onShowAPIHelp: {
+                showingAPIHelp = true
+            })
         case .session(let id):
             if let session = model.sessions.first(where: { $0.id == id }) {
                 SessionDetailView(model: model, session: session)
@@ -145,7 +238,7 @@ private struct NewSessionView: View {
             Text("Stress-test a moral framework without touching Terminal")
                 .font(.system(size: 30, weight: .semibold, design: .serif))
                 .foregroundStyle(AppPalette.ink)
-            Text("This app walks the user through the full Loophole method: write principles, convert them into a legal code, attack that code with loophole and overreach cases, then resolve or escalate the hardest tensions.")
+            Text("LoopholeUI guides you through the full method: write principles, turn them into a code, challenge that code with hard cases, then revise or escalate the deepest conflicts.")
                 .font(.title3)
                 .foregroundStyle(.secondary)
 
@@ -188,6 +281,14 @@ private struct NewSessionView: View {
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .background(AppPalette.accent.opacity(0.10), in: Capsule())
+                            Spacer(minLength: 0)
+                            HStack(spacing: 8) {
+                                Text("Use Template")
+                                    .font(.caption.weight(.semibold))
+                                Image(systemName: "arrow.up.forward.square")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(AppPalette.accent)
                         }
                         .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
                         .padding(18)
@@ -208,8 +309,8 @@ private struct NewSessionView: View {
             Text("Session Builder")
                 .font(.title2.weight(.semibold))
 
-            HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 18) {
                     labeledField("Session Title") {
                         TextField("Example: Campus Speech Stress Test", text: $model.draft.title)
                             .textFieldStyle(.roundedBorder)
@@ -220,7 +321,7 @@ private struct NewSessionView: View {
                             .textFieldStyle(.roundedBorder)
                     }
 
-                    labeledField("How many rounds should the app run?") {
+                    labeledField("How many rounds should run?") {
                         Picker("Rounds", selection: $model.draft.maxRounds) {
                             ForEach([3, 4, 5, 6, 8], id: \.self) { value in
                                 Text("\(value) rounds").tag(value)
@@ -242,12 +343,18 @@ private struct NewSessionView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .frame(maxWidth: 320)
+                .frame(width: 320, alignment: .topLeading)
+                .padding(20)
+                .background(AppPalette.card.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AppPalette.rule, lineWidth: 1)
+                )
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Moral Principles")
                         .font(.headline)
-                    Text("Write the user’s principles in plain language. The app will pass them into the Legislator exactly as written, so specificity helps.")
+                    Text("Write your principles in plain language. The Legislator will turn them into the first draft, so concrete details help.")
                         .foregroundStyle(.secondary)
                     TextEditor(text: $model.draft.principles)
                         .font(AppTypography.documentBody)
@@ -259,18 +366,22 @@ private struct NewSessionView: View {
                                 .stroke(AppPalette.rule, lineWidth: 1)
                         )
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
 
-            HStack {
+            Divider()
+
+            HStack(alignment: .center, spacing: 16) {
                 Button(model.isWorking ? "Starting…" : "Start Session") {
                     model.startSession()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.isWorking)
 
-                Text("The user will move into a guided round-by-round workspace after the first draft is ready.")
+                Text("You’ll move into the guided review workspace as soon as the first draft is ready.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(24)
@@ -379,6 +490,11 @@ private struct SessionDetailView: View {
                 selectedPanel = session.hasReviewedDraft ? 0 : 2
             }
         }
+        .onChange(of: session.hasReviewedDraft) { hasReviewedDraft in
+            if hasReviewedDraft, selectedPanel == 2, session.currentRound == 0 {
+                selectedPanel = 1
+            }
+        }
     }
 
     private var header: some View {
@@ -394,6 +510,9 @@ private struct SessionDetailView: View {
                 MetaBadge(text: "\(session.userResolvedCount) user decisions")
             }
             Text("The app is following the original Loophole loop: principles to legislator, adversarial attacks, judge review, then resolution or escalation.")
+                .foregroundStyle(.secondary)
+            Text("Read the draft, review the cases, and use each round to see where your principles hold firm or need clarification.")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
     }
@@ -449,6 +568,7 @@ private struct SessionDetailView: View {
 
                 if shouldShowShortcut {
                     Button(model.isWorking ? "Working…" : "Skip Ahead") {
+                        selectedPanel = 1
                         model.runNextStep()
                     }
                     .buttonStyle(.bordered)
@@ -468,9 +588,9 @@ private struct SessionDetailView: View {
 
     private func escalationPanel(_ escalation: CaseRecord) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("This round needs the user’s judgment")
+            Text("This round needs your judgment")
                 .font(.title3.weight(.semibold))
-            Text("The Judge could not patch this case without creating a conflict. The app should now collect a plain-language decision and turn it into binding precedent.")
+            Text("The Judge could not patch this case without creating a conflict. Write a short ruling in plain language and the app will carry it forward as precedent.")
                 .foregroundStyle(.secondary)
 
             CaseCard(caseRecord: escalation, emphasize: true)
@@ -554,8 +674,14 @@ private struct SessionDetailView: View {
 
     private var casesPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if model.isWorking && session.cases.isEmpty {
+                StatusCallout(
+                    title: "Preparing the first cases",
+                    subtitle: "The Loophole Finder and Overreach Finder are assembling examples for you to review."
+                )
+            }
             if session.cases.isEmpty {
-                EmptyStateView(title: "No cases yet", subtitle: "Run the first round to let the loophole and overreach finders attack the code.")
+                EmptyStateView(title: "No cases yet", subtitle: "Start the first review to generate cases, then return here to read them one by one.")
             } else {
                 ForEach(Array(session.cases.reversed())) { item in
                     CaseCard(caseRecord: item, emphasize: false)
@@ -613,42 +739,60 @@ private struct SessionDetailView: View {
 
 private struct SettingsView: View {
     @ObservedObject var model: AppModel
+    let onShowAPIHelp: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Settings")
                     .font(.system(size: 30, weight: .semibold, design: .serif))
-                Text("Guided Demo mode works immediately. Live AI mode lets the app generate fresh legislators, adversaries, and judges inside the app without Python or Terminal.")
+                Text("Guided Demo works immediately. Live AI lets you run fresh Loophole rounds without leaving the app.")
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Live AI")
                         .font(.title3.weight(.semibold))
-                    Picker("Provider", selection: $model.liveProvider) {
-                        ForEach(LiveProvider.allCases) { provider in
-                            Text(provider.rawValue).tag(provider)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Provider")
+                            .font(.headline)
+                        Picker("Provider", selection: $model.settingsProviderChoice) {
+                            ForEach(SettingsProviderChoice.allCases) { provider in
+                                Text(provider.rawValue).tag(provider)
+                            }
                         }
+                        .pickerStyle(.menu)
                     }
-                    .pickerStyle(.segmented)
 
-                    if model.liveProvider == .anthropic {
+                    if model.settingsProviderChoice == .anthropic {
                         SecureField("Claude API Key", text: $model.anthropicAPIKey)
                             .textFieldStyle(.roundedBorder)
                         TextField("Claude model", text: $model.anthropicModel)
                             .textFieldStyle(.roundedBorder)
-                        Text("Claude keys remain saved even if you switch this toggle to ChatGPT.")
+                        Text("Your Claude key stays saved even if you switch this menu to ChatGPT or Other.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    } else {
+                    } else if model.settingsProviderChoice == .openAI {
                         SecureField("ChatGPT API Key", text: $model.openAIAPIKey)
                             .textFieldStyle(.roundedBorder)
                         TextField("ChatGPT model", text: $model.openAIModel)
                             .textFieldStyle(.roundedBorder)
-                        Text("ChatGPT keys remain saved even if you switch this toggle back to Claude.")
+                        Text("Your ChatGPT key stays saved even if you switch this menu to Claude or Other.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        TextField("Other provider name", text: $model.otherProviderLabel)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Notes or model name", text: $model.otherProviderNotes)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Other is a saved placeholder for future support. Live runs in this version still use Claude or ChatGPT.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+
+                    Button("How do API keys work?") {
+                        onShowAPIHelp()
+                    }
+                    .buttonStyle(.bordered)
 
                     Stepper(value: $model.casesPerAgent, in: 1...4) {
                         Text("Cases per finder: \(model.casesPerAgent)")
@@ -813,6 +957,197 @@ private struct EmptyStateView: View {
     }
 }
 
+private struct StatusCallout: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppPalette.accent)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
+    }
+}
+
+private struct SearchField: View {
+    @Binding var text: String
+    let placeholder: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
+    }
+}
+
+private struct RenameSessionSheet: View {
+    let currentTitle: String
+    @Binding var draftTitle: String
+    let onCancel: () -> Void
+    let onSave: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Rename Session")
+                .font(.title2.weight(.semibold))
+            Text("Choose a clear title so you can find this session again later.")
+                .foregroundStyle(.secondary)
+
+            TextField("Session title", text: $draftTitle)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("Save Title") {
+                    onSave()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftTitle == currentTitle)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+        .background(AppPalette.canvas)
+    }
+}
+
+private struct APIInstructionsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Using Claude or ChatGPT with LoopholeUI")
+                    .font(.system(size: 28, weight: .semibold, design: .serif))
+
+                Text("This app can run the Loophole framework with live AI. To do that, it needs permission to send your prompts to the AI service you choose.")
+                    .foregroundStyle(.secondary)
+
+                helpSection(
+                    title: "What is an API key?",
+                    body: "An API key is a private passcode that tells Claude or ChatGPT that the request is really coming from your account. Think of it as a password for the app, not a password you would use to sign in every day."
+                )
+
+                helpSection(
+                    title: "Why does the app need one?",
+                    body: "When you use Guided Demo, the app uses built-in sample outputs. When you choose Claude or ChatGPT, the app needs your API key so it can request a fresh Legislator draft, fresh loophole cases, fresh overreach cases, and fresh judging decisions."
+                )
+
+                helpSection(
+                    title: "How to get a Claude key",
+                    body: "Go to the Anthropic Console in your web browser, sign in or create an account, open the API or developer area, and create a new API key. Copy the key and paste it into the Claude API Key box in Settings."
+                )
+
+                helpSection(
+                    title: "How to get a ChatGPT key",
+                    body: "Go to the OpenAI Platform in your web browser, sign in or create an account, open the API keys area, create a new secret key, copy it once, and paste it into the ChatGPT API Key box in Settings."
+                )
+
+                helpSection(
+                    title: "Free usage and paid usage",
+                    body: "These limits can change, so it is best to treat them as rough starting points. Claude and OpenAI sometimes give new users a small amount of trial usage, but many people will need to add billing before they can use the API reliably. In practice, expect that you may need to add a payment method or prepay credits if you want more than a short test."
+                )
+
+                helpSection(
+                    title: "Where to add money or refill",
+                    body: "For Claude, billing is usually managed in the Anthropic Console. For ChatGPT API use, billing is usually managed in the OpenAI Platform billing area. If your live runs stop working after a few tries, the first thing to check is whether your account needs billing enabled."
+                )
+
+                helpSection(
+                    title: "What to paste into this app",
+                    body: "Paste only the API key itself into the matching key box. You do not need to paste a whole webpage, account password, or billing receipt. If you are unsure about the model field, you can leave the default value unless you have a specific reason to change it."
+                )
+
+                helpSection(
+                    title: "Basic safety advice",
+                    body: "Do not post your API key in email, class notes, screenshots, GitHub, or shared documents. Anyone with the key can use your account credits. If you think you exposed the key by accident, delete it in the provider dashboard and make a new one."
+                )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Helpful links")
+                        .font(.headline)
+                    Link("Anthropic Console", destination: URL(string: "https://console.anthropic.com")!)
+                    Link("Anthropic Pricing", destination: URL(string: "https://www.anthropic.com/pricing")!)
+                    Link("OpenAI Platform", destination: URL(string: "https://platform.openai.com")!)
+                    Link("OpenAI Billing Help", destination: URL(string: "https://help.openai.com")!)
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(28)
+        }
+        .frame(minWidth: 640, minHeight: 720)
+        .background(AppPalette.canvas)
+    }
+
+    private func helpSection(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(body)
+                .font(AppTypography.documentBody)
+                .foregroundStyle(AppPalette.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
+    }
+}
+
 private struct NarrativeBlock: View {
     let title: String
     let text: String
@@ -901,10 +1236,10 @@ private extension SessionDetailView {
             return "The code has been tightened through every planned round. Review the final code, cases, and precedents below."
         }
         if session.currentRound == 0 && !session.hasReviewedDraft {
-            return "The user should first read the legislation the app produced from their moral principles. After that, the app can begin testing it for loopholes and overreach."
+            return "Start by reviewing the legislation produced from your principles. After that, the first cases will appear here for review."
         }
         if session.currentRound == 0 && session.stage == .drafting {
-            return "Next, the Loophole Finder and Overreach Finder will probe this code. The Judge will then decide whether each failure can be fixed or must be escalated."
+            return "Next, the Loophole Finder and Overreach Finder will probe this code. The Judge will then decide whether each problem can be fixed or must be escalated."
         }
         if session.stage == .roundComplete {
             return "This round's fixes are in place. The next round will search for new edge cases under the revised code."
@@ -928,8 +1263,8 @@ private extension SessionDetailView {
 
     func primaryAction() {
         if session.currentRound == 0 && !session.hasReviewedDraft {
-            selectedPanel = 2
-            model.markDraftReviewed()
+            selectedPanel = 1
+            model.beginFirstReview()
             return
         }
 
@@ -939,8 +1274,8 @@ private extension SessionDetailView {
     var guidanceSummary: (previous: String, current: String, next: String) {
         if session.currentRound == 0 && !session.hasReviewedDraft {
             return (
-                previous: "The user entered moral principles and the app converted them into a draft legal code.",
-                current: "You are now reading the Legislator's draft so you can see exactly what rules were created.",
+                previous: "You entered moral principles and LoopholeUI converted them into a draft legal code.",
+                current: "You are now moving into the first case review so you can see how the draft holds up under pressure.",
                 next: "After this, the Loophole Finder will search for legal-but-wrong conduct, and the Overreach Finder will search for forbidden-but-acceptable conduct."
             )
         }
@@ -950,11 +1285,11 @@ private extension SessionDetailView {
             return (
                 previous: "The Legislator has produced a first-pass code from the user's principles.",
                 current: "You are at the handoff between the drafted code and the first adversarial test round.",
-                next: "The app will generate loophole and overreach cases, then send them to the Judge."
+                next: "LoopholeUI will generate loophole and overreach cases, then send them to the Judge."
             )
         case .findingLoopholes:
             return (
-                previous: "The user reviewed the drafted code.",
+                previous: "You reviewed the drafted code.",
                 current: "The Loophole Finder is searching for conduct that remains legal even though it violates the user's values.",
                 next: "The Overreach Finder will then look for conduct the code wrongly prohibits."
             )
@@ -973,7 +1308,7 @@ private extension SessionDetailView {
         case .waitingForDecision:
             return (
                 previous: "The Judge found a conflict that could not be cleanly resolved.",
-                current: "The user must now make a plain-language policy choice that becomes precedent.",
+                current: "You now need to make a plain-language policy choice that becomes precedent.",
                 next: "That decision will be folded back into the code before the loop continues."
             )
         case .roundComplete:
@@ -990,8 +1325,8 @@ private extension SessionDetailView {
             )
         case .onboarding:
             return (
-                previous: "The user has not yet started a session.",
-                current: "The app is waiting for moral principles.",
+                previous: "No session has started yet.",
+                current: "LoopholeUI is waiting for your moral principles.",
                 next: "The Legislator will draft the initial code."
             )
         }
