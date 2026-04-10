@@ -20,6 +20,9 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Repair published source snapshot
+        run: python3 Scripts/repair-github-build-sources.py
+
       - name: Build LoopholeUI
         run: |
           xcodebuild \
