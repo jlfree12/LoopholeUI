@@ -82,7 +82,7 @@ struct ContentView: View {
             }
 
             Section("Find a Saved Session") {
-                SearchField(text: $model.sessionSearchText, placeholder: "Search by title, domain, or principles")
+                SearchField(text: $model.sessionSearchText, placeholder: "Search sessions")
                     .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
             }
 
@@ -154,7 +154,7 @@ struct ContentView: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: systemImage)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isSelected(selection) ? Color.white : AppPalette.ink)
+                    .foregroundStyle(AppPalette.ink)
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -167,24 +167,24 @@ struct ContentView: View {
                         .font(.system(size: 11))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(isSelected(selection) ? Color.white.opacity(0.85) : .secondary)
+                        .foregroundStyle(isSelected(selection) ? AppPalette.ink.opacity(0.72) : .secondary)
                 }
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(isSelected(selection) ? Color.white.opacity(0.72) : AppPalette.ink.opacity(0.45))
+                    .foregroundStyle(isSelected(selection) ? AppPalette.ink.opacity(0.55) : AppPalette.ink.opacity(0.45))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected(selection) ? AppPalette.accent : AppPalette.card.opacity(0.55))
+                    .fill(isSelected(selection) ? AppPalette.selection : AppPalette.card.opacity(0.55))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(isSelected(selection) ? AppPalette.accent.opacity(0.9) : AppPalette.rule.opacity(0.75), lineWidth: 1)
+                    .stroke(isSelected(selection) ? AppPalette.ink.opacity(0.18) : AppPalette.rule.opacity(0.75), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -221,28 +221,30 @@ private struct NewSessionView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                hero
-                templates
-                principleGuidance
-                composer
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    hero(width: geometry.size.width)
+                    templates
+                    principleGuidance(width: geometry.size.width)
+                    composer(width: geometry.size.width)
+                }
+                .padding(28)
             }
-            .padding(28)
+            .background(AppPalette.canvas)
         }
-        .background(AppPalette.canvas)
     }
 
-    private var hero: some View {
+    private func hero(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Stress-test a moral framework without touching Terminal")
+            Text("Stress-test a moral framework in a structured workspace")
                 .font(.system(size: 30, weight: .semibold, design: .serif))
                 .foregroundStyle(AppPalette.ink)
-            Text("LoopholeUI guides you through the full method: write principles, turn them into a code, challenge that code with hard cases, then revise or escalate the deepest conflicts.")
+            Text(.init("LoopholeUI guides you through the full method: write principles, turn them into a code, challenge that code with hard cases, then revise or escalate the deepest conflicts. Original model by [brendanhogan](https://github.com/brendanhogan/loophole), UI by jlfree."))
                 .font(.title3)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: width > 980 ? 150 : 180), spacing: 12)], spacing: 12) {
                 ForEach(WorkflowStage.allCases.filter { $0 != .onboarding && $0 != .completed }, id: \.rawValue) { stage in
                     StageChip(title: stage.title, subtitle: stagePreview(stage), state: .upcoming)
                 }
@@ -304,69 +306,23 @@ private struct NewSessionView: View {
         }
     }
 
-    private var composer: some View {
+    private func composer(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Session Builder")
                 .font(.title2.weight(.semibold))
 
-            HStack(alignment: .top, spacing: 24) {
-                VStack(alignment: .leading, spacing: 18) {
-                    labeledField("Session Title") {
-                        TextField("Example: Campus Speech Stress Test", text: $model.draft.title)
-                            .textFieldStyle(.roundedBorder)
+            Group {
+                if width > 980 {
+                    HStack(alignment: .top, spacing: 24) {
+                        composerControls
+                        principlesEditor
                     }
-
-                    labeledField("Domain") {
-                        TextField("Example: privacy, speech, public order, migration", text: $model.draft.domain)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    labeledField("How many rounds should run?") {
-                        Picker("Rounds", selection: $model.draft.maxRounds) {
-                            ForEach([3, 4, 5, 6, 8], id: \.self) { value in
-                                Text("\(value) rounds").tag(value)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-
-                    labeledField("AI Mode") {
-                        Picker("Mode", selection: $model.providerMode) {
-                            ForEach(ProviderMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        Text(model.providerMode.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 18) {
+                        composerControls
+                        principlesEditor
                     }
                 }
-                .frame(width: 320, alignment: .topLeading)
-                .padding(20)
-                .background(AppPalette.card.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(AppPalette.rule, lineWidth: 1)
-                )
-
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Moral Principles")
-                        .font(.headline)
-                    Text("Write your principles in plain language. The Legislator will turn them into the first draft, so concrete details help.")
-                        .foregroundStyle(.secondary)
-                    TextEditor(text: $model.draft.principles)
-                        .font(AppTypography.documentBody)
-                        .frame(minHeight: 250)
-                        .padding(12)
-                        .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(AppPalette.rule, lineWidth: 1)
-                        )
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
 
             Divider()
@@ -392,14 +348,14 @@ private struct NewSessionView: View {
         )
     }
 
-    private var principleGuidance: some View {
+    private func principleGuidance(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Writing Good Principles")
                 .font(.title3.weight(.semibold))
-            Text("These guidelines mirror the original Loophole project, but in a friendlier format.")
+            Text("These guidelines keep the analysis concrete, balanced, and easier to test.")
                 .foregroundStyle(.secondary)
 
-            HStack(alignment: .top, spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: width > 980 ? 220 : 260), spacing: 16)], spacing: 16) {
                 guidanceCard(
                     title: "Be specific enough",
                     detail: "Instead of 'I believe in fairness,' say what actors may or may not do, under what conditions, and why."
@@ -437,9 +393,75 @@ private struct NewSessionView: View {
             Text(detail)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
         .padding(16)
         .background(AppPalette.accent.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var composerControls: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            labeledField("Session Title") {
+                TextField("Example: Campus Speech Stress Test", text: $model.draft.title)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            labeledField("Domain") {
+                TextField("Example: privacy, speech, public order, migration", text: $model.draft.domain)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            labeledField("How many rounds should run?") {
+                Picker("How many rounds should run?", selection: $model.draft.maxRounds) {
+                    ForEach([3, 4, 5, 6, 8, 10, 12], id: \.self) { value in
+                        Text("\(value) rounds").tag(value)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text("Use fewer rounds for a quicker seminar exercise, or more rounds for a deeper stress test.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            labeledField("AI Mode") {
+                Picker("Mode", selection: $model.providerMode) {
+                    ForEach(ProviderMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(model.providerMode.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 320, alignment: .topLeading)
+        .padding(20)
+        .background(AppPalette.card.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AppPalette.rule, lineWidth: 1)
+        )
+    }
+
+    private var principlesEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Moral Principles")
+                .font(.headline)
+            Text("Write your principles in plain language. The Legislator will turn them into the first draft, so concrete details help.")
+                .foregroundStyle(.secondary)
+            TextEditor(text: $model.draft.principles)
+                .font(AppTypography.documentBody)
+                .frame(minHeight: 250)
+                .padding(12)
+                .background(AppPalette.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(AppPalette.rule, lineWidth: 1)
+                )
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func stagePreview(_ stage: WorkflowStage) -> String {
@@ -486,12 +508,19 @@ private struct SessionDetailView: View {
         }
         .background(AppPalette.canvas)
         .onAppear {
-            if session.currentRound == 0 && selectedPanel == 0 {
+            if session.awaitingCaseReview {
+                selectedPanel = 1
+            } else if session.currentRound == 0 && selectedPanel == 0 {
                 selectedPanel = session.hasReviewedDraft ? 0 : 2
             }
         }
         .onChange(of: session.hasReviewedDraft) { hasReviewedDraft in
             if hasReviewedDraft, selectedPanel == 2, session.currentRound == 0 {
+                selectedPanel = 1
+            }
+        }
+        .onChange(of: session.awaitingCaseReview) { awaitingCaseReview in
+            if awaitingCaseReview {
                 selectedPanel = 1
             }
         }
@@ -509,7 +538,7 @@ private struct SessionDetailView: View {
                 MetaBadge(text: "\(session.autoResolvedCount) auto-resolved")
                 MetaBadge(text: "\(session.userResolvedCount) user decisions")
             }
-            Text("The app is following the original Loophole loop: principles to legislator, adversarial attacks, judge review, then resolution or escalation.")
+            Text("This analysis follows Brendan Hogan’s Loophole method: principles, legislator, adversarial cases, judge review, then revision or escalation.")
                 .foregroundStyle(.secondary)
             Text("Read the draft, review the cases, and use each round to see where your principles hold firm or need clarification.")
                 .font(.subheadline)
@@ -519,15 +548,23 @@ private struct SessionDetailView: View {
 
     private var loopNarrative: some View {
         let summary = guidanceSummary
-        return HStack(alignment: .top, spacing: 20) {
-            NarrativeBlock(title: "Previous", text: summary.previous)
-            NarrativeBlock(title: "Current", text: summary.current)
-            NarrativeBlock(title: "Next", text: summary.next)
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 20) {
+                NarrativeBlock(title: "Previous", text: summary.previous)
+                NarrativeBlock(title: "Current", text: summary.current)
+                NarrativeBlock(title: "Next", text: summary.next)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                NarrativeBlock(title: "Previous", text: summary.previous)
+                NarrativeBlock(title: "Current", text: summary.current)
+                NarrativeBlock(title: "Next", text: summary.next)
+            }
         }
     }
 
     private var stageBoard: some View {
-        HStack(spacing: 12) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
             ForEach(loopStages, id: \.rawValue) { stage in
                 StageChip(
                     title: stage.title,
@@ -567,14 +604,14 @@ private struct SessionDetailView: View {
                 .disabled(model.isWorking || session.stage == .completed)
 
                 if shouldShowShortcut {
-                    Button(model.isWorking ? "Working…" : "Skip Ahead") {
-                        selectedPanel = 1
-                        model.runNextStep()
+                    Button(model.isWorking ? "Working…" : "Skip to Later Review") {
+                        selectedPanel = 3
+                        model.skipAheadFromDraft()
                     }
                     .buttonStyle(.bordered)
                     .tint(.secondary)
                     .disabled(model.isWorking || session.stage == .completed)
-                    .help("Shortcut: skip the guided pacing and jump directly into adversarial review.")
+                    .help("Shortcut: move past the guided case-reading step and jump toward later-round review.")
                 }
             }
         }
@@ -654,20 +691,15 @@ private struct SessionDetailView: View {
     }
 
     private var overviewPanel: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Moral Principles")
-                    .font(.headline)
-                ReadableDocument(text: session.moralPrinciples)
+        ViewThatFit(in: .horizontal) {
+            HStack(alignment: .top, spacing: 20) {
+                overviewColumn(title: "Moral Principles", text: session.moralPrinciples)
+                overviewColumn(title: "Latest Code Summary", text: session.currentCode.changelog.isEmpty ? "No updates yet." : session.currentCode.changelog)
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Latest Code Summary")
-                    .font(.headline)
-                ReadableDocument(text: session.currentCode.changelog.isEmpty ? "No updates yet." : session.currentCode.changelog)
-                Text("Code version v\(session.currentCode.version)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 16) {
+                overviewColumn(title: "Moral Principles", text: session.moralPrinciples)
+                overviewColumn(title: "Latest Code Summary", text: session.currentCode.changelog.isEmpty ? "No updates yet." : session.currentCode.changelog)
             }
         }
     }
@@ -679,9 +711,8 @@ private struct SessionDetailView: View {
                     title: "Preparing the first cases",
                     subtitle: "The Loophole Finder and Overreach Finder are assembling examples for you to review."
                 )
-            }
             if session.cases.isEmpty {
-                EmptyStateView(title: "No cases yet", subtitle: "Start the first review to generate cases, then return here to read them one by one.")
+                EmptyStateView(title: "No cases yet", subtitle: "Begin the first review to generate cases, then read them here before moving to the next step.")
             } else {
                 ForEach(Array(session.cases.reversed())) { item in
                     CaseCard(caseRecord: item, emphasize: false)
@@ -735,6 +766,19 @@ private struct SessionDetailView: View {
             }
         }
     }
+
+    private func overviewColumn(title: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            ReadableDocument(text: text)
+            if title == "Latest Code Summary" {
+                Text("Code version v\(session.currentCode.version)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
 }
 
 private struct SettingsView: View {
@@ -746,56 +790,142 @@ private struct SettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Settings")
                     .font(.system(size: 30, weight: .semibold, design: .serif))
-                Text("Guided Demo works immediately. Live AI lets you run fresh Loophole rounds without leaving the app.")
+                Text("Guided Demo works immediately. Live AI lets you run fresh Loophole rounds with your own Claude or ChatGPT account details.")
+                    .foregroundStyle(.secondary)
+                Text("You still choose Guided Demo, Claude, or ChatGPT in the Session Builder. This page stores your account details, model choices, and loop defaults.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Live AI")
+                    Text("Claude")
                         .font(.title3.weight(.semibold))
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Provider")
-                            .font(.headline)
-                        Picker("Provider", selection: $model.settingsProviderChoice) {
-                            ForEach(SettingsProviderChoice.allCases) { provider in
-                                Text(provider.rawValue).tag(provider)
+                    SecureField("Claude API Key", text: $model.anthropicAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                    labeledMenu(
+                        title: "Claude model",
+                        helper: "Recommendation dated April 2026: Claude Sonnet 4.6 is the best starting point for most classroom and policy analysis work. If you want the strongest reasoning and do not mind higher cost, try Claude Opus 4.6."
+                    ) {
+                        Picker("Claude model", selection: anthropicModelSelection) {
+                            ForEach(ModelCatalog.anthropic) { option in
+                                Text(option.label).tag(option.id)
                             }
                         }
                         .pickerStyle(.menu)
                     }
 
-                    if model.settingsProviderChoice == .anthropic {
-                        SecureField("Claude API Key", text: $model.anthropicAPIKey)
+                    if anthropicModelSelection.wrappedValue == ModelCatalog.customID {
+                        TextField("Enter a Claude model name", text: $model.anthropicModel)
                             .textFieldStyle(.roundedBorder)
-                        TextField("Claude model", text: $model.anthropicModel)
+                    }
+
+                    Divider()
+
+                    Text("ChatGPT")
+                        .font(.title3.weight(.semibold))
+                    SecureField("ChatGPT API Key", text: $model.openAIAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                    labeledMenu(
+                        title: "ChatGPT model",
+                        helper: "Recommendation dated April 2026: GPT-5.4 mini is the safest everyday choice if you want a balance of quality, speed, and cost. If quality matters most, move up to GPT-5.4."
+                    ) {
+                        Picker("ChatGPT model", selection: openAIModelSelection) {
+                            ForEach(ModelCatalog.openAI) { option in
+                                Text(option.label).tag(option.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    if openAIModelSelection.wrappedValue == ModelCatalog.customID {
+                        TextField("Enter a ChatGPT model name", text: $model.openAIModel)
                             .textFieldStyle(.roundedBorder)
-                        Text("Your Claude key stays saved even if you switch this menu to ChatGPT or Other.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if model.settingsProviderChoice == .openAI {
-                        SecureField("ChatGPT API Key", text: $model.openAIAPIKey)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("ChatGPT model", text: $model.openAIModel)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Your ChatGPT key stays saved even if you switch this menu to Claude or Other.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        TextField("Other provider name", text: $model.otherProviderLabel)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Notes or model name", text: $model.otherProviderNotes)
-                            .textFieldStyle(.roundedBorder)
-                        Text("Other is a saved placeholder for future support. Live runs in this version still use Claude or ChatGPT.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
 
                     Button("How do API keys work?") {
                         onShowAPIHelp()
                     }
                     .buttonStyle(.bordered)
+                }
+                .padding(24)
+                .background(AppPalette.sheet, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(AppPalette.rule, lineWidth: 1)
+                )
 
-                    Stepper(value: $model.casesPerAgent, in: 1...4) {
-                        Text("Cases per finder: \(model.casesPerAgent)")
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("Loophole Method Settings")
+                        .font(.title3.weight(.semibold))
+
+                    settingsStepper(
+                        title: "Maximum response length",
+                        helper: "Higher values let the AI write longer drafts and decisions, but they can also cost more.",
+                        valueText: "\(model.maxTokens) tokens"
+                    ) {
+                        Stepper(value: $model.maxTokens, in: 1024...8192, step: 256) {
+                            EmptyView()
+                        }
+                    }
+
+                    settingsSlider(
+                        title: "Legislator creativity",
+                        helper: "Lower values make the drafted code more steady and literal. Higher values make it more exploratory.",
+                        value: $model.legislatorTemperature
+                    )
+
+                    settingsSlider(
+                        title: "Loophole Finder creativity",
+                        helper: "Higher values push the Loophole Finder toward sharper, more adversarial edge cases.",
+                        value: $model.loopholeFinderTemperature
+                    )
+
+                    settingsSlider(
+                        title: "Overreach Finder creativity",
+                        helper: "Higher values push the Overreach Finder toward broader tests of where the rules may go too far.",
+                        value: $model.overreachFinderTemperature
+                    )
+
+                    settingsSlider(
+                        title: "Judge creativity",
+                        helper: "Lower values make the Judge more conservative and precedent-focused.",
+                        value: $model.judgeTemperature
+                    )
+
+                    settingsStepper(
+                        title: "Default rounds for a new session",
+                        helper: "This sets the starting rounds value in the Session Builder. You can still change it before starting any new session.",
+                        valueText: "\(model.defaultMaxRounds) rounds"
+                    ) {
+                        Stepper(value: $model.defaultMaxRounds, in: 3...12) {
+                            EmptyView()
+                        }
+                    }
+
+                    settingsStepper(
+                        title: "Cases per finder",
+                        helper: "This controls how many loophole and overreach cases are generated in each round.",
+                        valueText: "\(model.casesPerAgent) cases"
+                    ) {
+                        Stepper(value: $model.casesPerAgent, in: 1...5) {
+                            EmptyView()
+                        }
+                    }
+
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Saved sessions")
+                                .font(.headline)
+                            Text("Open the folder on this Mac where your saved analyses are stored.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Open Saved Sessions Folder") {
+                            model.openSavedSessionsFolder()
+                        }
+                        .buttonStyle(.bordered)
                     }
 
                     Button("Save Settings") {
@@ -809,10 +939,92 @@ private struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .stroke(AppPalette.rule, lineWidth: 1)
                 )
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                    Text(.init("Original Loophole model by [brendanhogan](https://github.com/brendanhogan/loophole)."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(28)
         }
         .background(AppPalette.canvas)
+    }
+
+    private var anthropicModelSelection: Binding<String> {
+        Binding(
+            get: { ModelCatalog.containsAnthropic(model.anthropicModel) ? model.anthropicModel : ModelCatalog.customID },
+            set: { selection in
+                if selection == ModelCatalog.customID {
+                    if ModelCatalog.containsAnthropic(model.anthropicModel) {
+                        model.anthropicModel = ""
+                    }
+                } else {
+                    model.anthropicModel = selection
+                }
+            }
+        )
+    }
+
+    private var openAIModelSelection: Binding<String> {
+        Binding(
+            get: { ModelCatalog.containsOpenAI(model.openAIModel) ? model.openAIModel : ModelCatalog.customID },
+            set: { selection in
+                if selection == ModelCatalog.customID {
+                    if ModelCatalog.containsOpenAI(model.openAIModel) {
+                        model.openAIModel = ""
+                    }
+                } else {
+                    model.openAIModel = selection
+                }
+            }
+        )
+    }
+
+    private func labeledMenu<Content: View>(title: String, helper: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            content()
+            Text(helper)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func settingsStepper<Content: View>(title: String, helper: String, valueText: String, @ViewBuilder control: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                Spacer()
+                Text(valueText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            control()
+            Text(helper)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func settingsSlider(title: String, helper: String, value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                Spacer()
+                Text(String(format: "%.1f", value.wrappedValue))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: 0.0...1.0, step: 0.1)
+            Text(helper)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -865,15 +1077,15 @@ private struct CaseCard: View {
     let emphasize: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(caseRecord.kind.displayName)
+                Text(caseRecord.kind.userLabel)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(chipColor.opacity(0.14), in: Capsule())
 
-                Text(caseRecord.status.rawValue.replacingOccurrences(of: "Resolved", with: " Resolved").capitalized)
+                Text(statusLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -886,16 +1098,12 @@ private struct CaseCard: View {
 
             Text(caseRecord.title)
                 .font(AppTypography.cardTitle)
-            Text(caseRecord.scenario)
-                .font(AppTypography.documentBody)
-            Text(caseRecord.explanation)
-                .font(AppTypography.documentBody)
-                .foregroundStyle(.secondary)
+            caseSection(label: "Scenario", text: caseRecord.scenario)
+            caseSection(label: "Why it matters", text: caseRecord.explanation, secondary: true)
 
             if let summary = caseRecord.resolutionSummary {
                 Divider()
-                Text(summary)
-                    .font(AppTypography.documentBody)
+                caseSection(label: "Resolution", text: summary)
             }
         }
         .padding(18)
@@ -905,6 +1113,31 @@ private struct CaseCard: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AppPalette.rule, lineWidth: 1)
         )
+    }
+
+    private var statusLabel: String {
+        switch caseRecord.status {
+        case .pending:
+            return "Awaiting review"
+        case .autoResolved:
+            return "Judge resolved"
+        case .escalated:
+            return "Needs your ruling"
+        case .userResolved:
+            return "Resolved by you"
+        }
+    }
+
+    private func caseSection(label: String, text: String, secondary: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            Text(text)
+                .font(AppTypography.documentBody)
+                .foregroundStyle(secondary ? AppPalette.ink.opacity(0.8) : AppPalette.ink)
+        }
     }
 
     private var chipColor: Color {
@@ -1074,7 +1307,7 @@ private struct APIInstructionsSheet: View {
 
                 helpSection(
                     title: "Why does the app need one?",
-                    body: "When you use Guided Demo, the app uses built-in sample outputs. When you choose Claude or ChatGPT, the app needs your API key so it can request a fresh Legislator draft, fresh loophole cases, fresh overreach cases, and fresh judging decisions."
+                    body: "When you use Guided Demo, the app uses example outputs. When you choose Claude or ChatGPT, the app needs your API key so it can request a fresh Legislator draft, fresh loophole cases, fresh overreach cases, and fresh judging decisions."
                 )
 
                 helpSection(
@@ -1189,6 +1422,7 @@ private enum AppPalette {
     static let card = Color(nsColor: NSColor(calibratedWhite: 0.93, alpha: 1))
     static let rule = Color(nsColor: NSColor(calibratedWhite: 0.80, alpha: 1))
     static let accent = Color(nsColor: NSColor(calibratedRed: 0.17, green: 0.23, blue: 0.33, alpha: 1))
+    static let selection = Color(nsColor: NSColor(calibratedRed: 0.74, green: 0.80, blue: 0.85, alpha: 1))
     static let complete = Color(nsColor: NSColor(calibratedRed: 0.78, green: 0.82, blue: 0.85, alpha: 1))
     static let ink = Color(nsColor: NSColor(calibratedRed: 0.16, green: 0.16, blue: 0.18, alpha: 1))
 }
@@ -1222,6 +1456,9 @@ private extension SessionDetailView {
         if session.currentRound == 0 && !session.hasReviewedDraft {
             return "Begin with the Legislator's draft"
         }
+        if session.awaitingCaseReview {
+            return "Review the cases before judgment"
+        }
         if session.currentRound == 0 && session.stage == .drafting {
             return "Continue into the first adversarial round"
         }
@@ -1236,7 +1473,10 @@ private extension SessionDetailView {
             return "The code has been tightened through every planned round. Review the final code, cases, and precedents below."
         }
         if session.currentRound == 0 && !session.hasReviewedDraft {
-            return "Start by reviewing the legislation produced from your principles. After that, the first cases will appear here for review."
+            return "Open the first case set and read through it before asking the Judge to rule on the problems it reveals."
+        }
+        if session.awaitingCaseReview {
+            return "The Loophole Finder and Overreach Finder have finished this round. Read the cases first, then continue when you want the Judge to resolve them."
         }
         if session.currentRound == 0 && session.stage == .drafting {
             return "Next, the Loophole Finder and Overreach Finder will probe this code. The Judge will then decide whether each problem can be fixed or must be escalated."
@@ -1251,8 +1491,11 @@ private extension SessionDetailView {
         if session.currentRound == 0 && !session.hasReviewedDraft {
             return "Start First Review"
         }
+        if session.awaitingCaseReview {
+            return model.isWorking ? "Working…" : "Continue to Judge"
+        }
         if session.currentRound == 0 && session.stage == .drafting {
-            return model.isWorking ? "Working…" : "Continue to Loophole Finder"
+            return model.isWorking ? "Working…" : "Continue to First Case Round"
         }
         return model.isWorking ? "Working…" : "Continue Review"
     }
@@ -1268,22 +1511,34 @@ private extension SessionDetailView {
             return
         }
 
+        if session.awaitingCaseReview {
+            selectedPanel = 1
+        }
+
         model.runNextStep()
     }
 
     var guidanceSummary: (previous: String, current: String, next: String) {
         if session.currentRound == 0 && !session.hasReviewedDraft {
             return (
-                previous: "You entered moral principles and LoopholeUI converted them into a draft legal code.",
-                current: "You are now moving into the first case review so you can see how the draft holds up under pressure.",
-                next: "After this, the Loophole Finder will search for legal-but-wrong conduct, and the Overreach Finder will search for forbidden-but-acceptable conduct."
+                previous: "You entered moral principles and the Legislator turned them into a first draft.",
+                current: "You are about to open the first case set and read how the draft behaves under pressure.",
+                next: "After you review the cases, the Judge will decide which problems can be repaired and which need your ruling."
+            )
+        }
+
+        if session.awaitingCaseReview {
+            return (
+                previous: "The Loophole Finder and Overreach Finder have already generated this round's cases.",
+                current: "You are in the guided case-reading step before judgment begins.",
+                next: "When you continue, the Judge will review these cases and either resolve them or escalate a real conflict back to you."
             )
         }
 
         switch session.stage {
         case .drafting:
             return (
-                previous: "The Legislator has produced a first-pass code from the user's principles.",
+                previous: "The Legislator has produced a first-pass code from your principles.",
                 current: "You are at the handoff between the drafted code and the first adversarial test round.",
                 next: "LoopholeUI will generate loophole and overreach cases, then send them to the Judge."
             )
@@ -1326,7 +1581,7 @@ private extension SessionDetailView {
         case .onboarding:
             return (
                 previous: "No session has started yet.",
-                current: "LoopholeUI is waiting for your moral principles.",
+                current: "LoopholeUI is ready for your moral principles.",
                 next: "The Legislator will draft the initial code."
             )
         }
@@ -1347,6 +1602,9 @@ private extension SessionDetailView {
     var currentLoopIndex: Int {
         if session.currentRound == 0 && !session.hasReviewedDraft {
             return 1
+        }
+        if session.awaitingCaseReview {
+            return 3
         }
 
         switch session.stage {

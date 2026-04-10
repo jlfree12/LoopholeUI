@@ -11,12 +11,13 @@ protocol LoopholeClient {
 struct AnthropicClient: LoopholeClient {
     let apiKey: String
     let model: String
+    let settings: LiveModelSettings
 
     func draftInitialCode(domain: String, principles: String, clarifications: [String]) async throws -> LegalCode {
         let payload: LegislatorPayload = try await requestJSON(
             system: "You faithfully convert moral principles into a legal code.",
             user: PromptBuilder.legislatorPrompt(domain: domain, principles: principles, clarifications: clarifications),
-            temperature: 0.4
+            temperature: settings.legislatorTemperature
         )
 
         return LegalCode(version: 1, text: payload.codeText, changelog: payload.changelog)
@@ -26,7 +27,7 @@ struct AnthropicClient: LoopholeClient {
         let payload: CasesPayload = try await requestJSON(
             system: "You generate adversarial test cases for a legal code.",
             user: PromptBuilder.adversaryPrompt(kind: kind, session: session, casesPerAgent: casesPerAgent),
-            temperature: 0.8
+            temperature: kind == .loophole ? settings.loopholeFinderTemperature : settings.overreachFinderTemperature
         )
 
         return payload.cases.enumerated().map { index, item in
@@ -52,7 +53,7 @@ struct AnthropicClient: LoopholeClient {
         let payload: JudgePayload = try await requestJSON(
             system: "You are a careful judge preserving precedent and consistency.",
             user: PromptBuilder.judgePrompt(session: session, caseRecord: caseRecord),
-            temperature: 0.3
+            temperature: settings.judgeTemperature
         )
 
         return JudgeDecision(
@@ -73,7 +74,7 @@ struct AnthropicClient: LoopholeClient {
                 principles: session.moralPrinciples,
                 clarifications: session.userClarifications + ["Resolve case '\(caseRecord.title)' by incorporating this instruction: \(instruction)"]
             ) + "\n\nCurrent legal code to revise:\n\(session.currentCode.text)",
-            temperature: 0.4
+            temperature: settings.legislatorTemperature
         )
 
         return LegalCode(
@@ -87,7 +88,7 @@ struct AnthropicClient: LoopholeClient {
         let payload: ValidationPayload = try await requestJSON(
             system: "You validate revisions against precedent.",
             user: PromptBuilder.validationPrompt(session: session, candidateCode: candidateCode.text),
-            temperature: 0.2
+            temperature: settings.validationTemperature
         )
 
         return ValidationResult(passes: payload.passes, details: payload.details)
@@ -100,7 +101,7 @@ struct AnthropicClient: LoopholeClient {
 
         let requestBody = AnthropicRequest(
             model: model,
-            maxTokens: 4096,
+            maxTokens: settings.maxTokens,
             system: system,
             messages: [AnthropicMessage(role: "user", content: user)],
             temperature: temperature
@@ -138,12 +139,13 @@ struct AnthropicClient: LoopholeClient {
 struct OpenAIClient: LoopholeClient {
     let apiKey: String
     let model: String
+    let settings: LiveModelSettings
 
     func draftInitialCode(domain: String, principles: String, clarifications: [String]) async throws -> LegalCode {
         let payload: LegislatorPayload = try await requestJSON(
             system: "You faithfully convert moral principles into a legal code.",
             user: PromptBuilder.legislatorPrompt(domain: domain, principles: principles, clarifications: clarifications),
-            temperature: 0.4
+            temperature: settings.legislatorTemperature
         )
 
         return LegalCode(version: 1, text: payload.codeText, changelog: payload.changelog)
@@ -153,7 +155,7 @@ struct OpenAIClient: LoopholeClient {
         let payload: CasesPayload = try await requestJSON(
             system: "You generate adversarial test cases for a legal code.",
             user: PromptBuilder.adversaryPrompt(kind: kind, session: session, casesPerAgent: casesPerAgent),
-            temperature: 0.8
+            temperature: kind == .loophole ? settings.loopholeFinderTemperature : settings.overreachFinderTemperature
         )
 
         return payload.cases.enumerated().map { index, item in
@@ -179,7 +181,7 @@ struct OpenAIClient: LoopholeClient {
         let payload: JudgePayload = try await requestJSON(
             system: "You are a careful judge preserving precedent and consistency.",
             user: PromptBuilder.judgePrompt(session: session, caseRecord: caseRecord),
-            temperature: 0.3
+            temperature: settings.judgeTemperature
         )
 
         return JudgeDecision(
@@ -200,7 +202,7 @@ struct OpenAIClient: LoopholeClient {
                 principles: session.moralPrinciples,
                 clarifications: session.userClarifications + ["Resolve case '\(caseRecord.title)' by incorporating this instruction: \(instruction)"]
             ) + "\n\nCurrent legal code to revise:\n\(session.currentCode.text)",
-            temperature: 0.4
+            temperature: settings.legislatorTemperature
         )
 
         return LegalCode(
@@ -214,7 +216,7 @@ struct OpenAIClient: LoopholeClient {
         let payload: ValidationPayload = try await requestJSON(
             system: "You validate revisions against precedent.",
             user: PromptBuilder.validationPrompt(session: session, candidateCode: candidateCode.text),
-            temperature: 0.2
+            temperature: settings.validationTemperature
         )
 
         return ValidationResult(passes: payload.passes, details: payload.details)
@@ -239,7 +241,7 @@ struct OpenAIClient: LoopholeClient {
             model: model,
             input: combinedPrompt,
             temperature: temperature,
-            maxOutputTokens: 4096
+            maxOutputTokens: settings.maxTokens
         )
 
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
@@ -273,7 +275,7 @@ struct OpenAIClient: LoopholeClient {
 }
 
 struct DemoClient: LoopholeClient {
-    func draftInitialCode(domain: String, principles: String, clarifications: [String]) async throws -> LegalCode {
+    func draftInitialCode(domain: String, principles: String, clarifications: [String]) async throws -> LegalCodd {
         let clauses = principles
             .split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

@@ -36,41 +36,6 @@ enum ProviderMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum LiveProvider: String, CaseIterable, Identifiable {
-    case anthropic = "Claude"
-    case openAI = "ChatGPT"
-
-    var id: String { rawValue }
-
-    var providerMode: ProviderMode {
-        switch self {
-        case .anthropic:
-            return .anthropic
-        case .openAI:
-            return .openAI
-        }
-    }
-
-    init(mode: ProviderMode) {
-        switch mode {
-        case .anthropic:
-            self = .anthropic
-        case .openAI:
-            self = .openAI
-        case .guidedDemo:
-            self = .anthropic
-        }
-    }
-}
-
-enum SettingsProviderChoice: String, Codable, CaseIterable, Identifiable {
-    case anthropic = "Claude"
-    case openAI = "ChatGPT"
-    case other = "Other"
-
-    var id: String { rawValue }
-}
-
 enum WorkflowStage: String, Codable, CaseIterable {
     case onboarding
     case drafting
@@ -193,6 +158,7 @@ struct SessionRecord: Codable, Identifiable, Equatable {
     var cases: [CaseRecord]
     var queuedCaseIDs: [String]
     var currentQueueIndex: Int
+    var awaitingCaseReview: Bool
     var userClarifications: [String]
     var createdAt: Date
     var updatedAt: Date
@@ -230,6 +196,7 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         case cases
         case queuedCaseIDs
         case currentQueueIndex
+        case awaitingCaseReview
         case userClarifications
         case createdAt
         case updatedAt
@@ -252,6 +219,7 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         cases: [CaseRecord],
         queuedCaseIDs: [String],
         currentQueueIndex: Int,
+        awaitingCaseReview: Bool,
         userClarifications: [String],
         createdAt: Date,
         updatedAt: Date
@@ -272,6 +240,7 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         self.cases = cases
         self.queuedCaseIDs = queuedCaseIDs
         self.currentQueueIndex = currentQueueIndex
+        self.awaitingCaseReview = awaitingCaseReview
         self.userClarifications = userClarifications
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -295,6 +264,7 @@ struct SessionRecord: Codable, Identifiable, Equatable {
         cases = try container.decode([CaseRecord].self, forKey: .cases)
         queuedCaseIDs = try container.decode([String].self, forKey: .queuedCaseIDs)
         currentQueueIndex = try container.decode(Int.self, forKey: .currentQueueIndex)
+        awaitingCaseReview = try container.decodeIfPresent(Bool.self, forKey: .awaitingCaseReview) ?? false
         userClarifications = try container.decode([String].self, forKey: .userClarifications)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
@@ -327,6 +297,48 @@ struct JudgeDecision {
 struct ValidationResult {
     var passes: Bool
     var details: String
+}
+
+struct LiveModelSettings {
+    var maxTokens: Int
+    var legislatorTemperature: Double
+    var loopholeFinderTemperature: Double
+    var overreachFinderTemperature: Double
+    var judgeTemperature: Double
+    var validationTemperature: Double
+}
+
+struct ModelChoice: Identifiable, Hashable {
+    let id: String
+    let label: String
+}
+
+enum ModelCatalog {
+    static let customID = "__other__"
+
+    static let anthropic: [ModelChoice] = [
+        ModelChoice(id: "claude-opus-4-6", label: "Claude Opus 4.6"),
+        ModelChoice(id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6"),
+        ModelChoice(id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5"),
+        ModelChoice(id: customID, label: "Other")
+    ]
+
+    static let openAI: [ModelChoice] = [
+        ModelChoice(id: "gpt-5.4", label: "GPT-5.4"),
+        ModelChoice(id: "gpt-5.4-mini", label: "GPT-5.4 mini"),
+        ModelChoice(id: "gpt-5-mini", label: "GPT-5 mini"),
+        ModelChoice(id: "gpt-4.1", label: "GPT-4.1"),
+        ModelChoice(id: "gpt-4.1-mini", label: "GPT-4.1 mini"),
+        ModelChoice(id: customID, label: "Other")
+    ]
+
+    static func containsAnthropic(_ model: String) -> Bool {
+        anthropic.contains { $0.id == model }
+    }
+
+    static func containsOpenAI(_ model: String) -> Bool {
+        openAI.contains { $0.id == model }
+    }
 }
 
 enum LoopholeClientError: LocalizedError {

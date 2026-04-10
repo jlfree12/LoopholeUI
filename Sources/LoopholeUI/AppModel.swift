@@ -1,13 +1,17 @@
+import AppKit
 import Foundation
 
 @MainActor
 final class AppModel: ObservableObject {
     private enum SettingsKeys {
-        static let selectedProvider = "settings.selectedProvider"
         static let anthropicModel = "settings.anthropicModel"
         static let openAIModel = "settings.openAIModel"
-        static let otherProviderLabel = "settings.otherProviderLabel"
-        static let otherProviderNotes = "settings.otherProviderNotes"
+        static let maxTokens = "settings.maxTokens"
+        static let legislatorTemperature = "settings.legislatorTemperature"
+        static let loopholeFinderTemperature = "settings.loopholeFinderTemperature"
+        static let overreachFinderTemperature = "settings.overreachFinderTemperature"
+        static let judgeTemperature = "settings.judgeTemperature"
+        static let defaultMaxRounds = "settings.defaultMaxRounds"
         static let casesPerAgent = "settings.casesPerAgent"
     }
 
@@ -17,14 +21,16 @@ final class AppModel: ObservableObject {
     @Published var draft = SessionDraft()
     @Published var providerMode: ProviderMode = .guidedDemo
     @Published var anthropicAPIKey: String = ""
-    @Published var anthropicModel: String = "claude-sonnet-4-20250514"
+    @Published var anthropicModel: String = "claude-sonnet-4-6"
     @Published var openAIAPIKey: String = ""
-    @Published var openAIModel: String = "gpt-4.1-mini"
-    @Published var liveProvider: LiveProvider = .anthropic
-    @Published var settingsProviderChoice: SettingsProviderChoice = .anthropic
-    @Published var otherProviderLabel: String = ""
-    @Published var otherProviderNotes: String = ""
-    @Published var casesPerAgent: Int = 2
+    @Published var openAIModel: String = "gpt-5.4-mini"
+    @Published var maxTokens: Int = 4096
+    @Published var legislatorTemperature: Double = 0.4
+    @Published var loopholeFinderTemperature: Double = 0.9
+    @Published var overreachFinderTemperature: Double = 0.9
+    @Published var judgeTemperature: Double = 0.3
+    @Published var defaultMaxRounds: Int = 10
+    @Published var casesPerAgent: Int = 3
     @Published var isWorking = false
     @Published var errorMessage: String?
 
@@ -36,22 +42,32 @@ final class AppModel: ObservableObject {
         openAIAPIKey = SecretsStore.loadOpenAIKey()
         anthropicModel = defaults.string(forKey: SettingsKeys.anthropicModel) ?? anthropicModel
         openAIModel = defaults.string(forKey: SettingsKeys.openAIModel) ?? openAIModel
-        if let rawValue = defaults.string(forKey: SettingsKeys.selectedProvider),
-           let selection = SettingsProviderChoice(rawValue: rawValue) {
-            settingsProviderChoice = selection
+        let storedMaxTokens = defaults.integer(forKey: SettingsKeys.maxTokens)
+        if storedMaxTokens > 0 {
+            maxTokens = storedMaxTokens
         }
-        if settingsProviderChoice == .anthropic {
-            liveProvider = .anthropic
-        } else if settingsProviderChoice == .openAI {
-            liveProvider = .openAI
+        if defaults.object(forKey: SettingsKeys.legislatorTemperature) != nil {
+            legislatorTemperature = defaults.double(forKey: SettingsKeys.legislatorTemperature)
         }
-        otherProviderLabel = defaults.string(forKey: SettingsKeys.otherProviderLabel) ?? ""
-        otherProviderNotes = defaults.string(forKey: SettingsKeys.otherProviderNotes) ?? ""
+        if defaults.object(forKey: SettingsKeys.loopholeFinderTemperature) != nil {
+            loopholeFinderTemperature = defaults.double(forKey: SettingsKeys.loopholeFinderTemperature)
+        }
+        if defaults.object(forKey: SettingsKeys.overreachFinderTemperature) != nil {
+            overreachFinderTemperature = defaults.double(forKey: SettingsKeys.overreachFinderTemperature)
+        }
+        if defaults.object(forKey: SettingsKeys.judgeTemperature) != nil {
+            judgeTemperature = defaults.double(forKey: SettingsKeys.judgeTemperature)
+        }
+        let storedDefaultMaxRounds = defaults.integer(forKey: SettingsKeys.defaultMaxRounds)
+        if storedDefaultMaxRounds > 0 {
+            defaultMaxRounds = storedDefaultMaxRounds
+        }
         let storedCasesPerAgent = defaults.integer(forKey: SettingsKeys.casesPerAgent)
         if storedCasesPerAgent > 0 {
             casesPerAgent = storedCasesPerAgent
         }
 
+        draft.maxRounds = defaultMaxRounds
         sessions = sortedSessions(store.loadSessions())
     }
 
@@ -78,17 +94,21 @@ final class AppModel: ObservableObject {
         let defaults = UserDefaults.standard
         SecretsStore.saveAnthropicKey(anthropicAPIKey)
         SecretsStore.saveOpenAIKey(openAIAPIKey)
-        if settingsProviderChoice == .anthropic {
-            liveProvider = .anthropic
-        } else if settingsProviderChoice == .openAI {
-            liveProvider = .openAI
-        }
         defaults.set(anthropicModel, forKey: SettingsKeys.anthropicModel)
         defaults.set(openAIModel, forKey: SettingsKeys.openAIModel)
-        defaults.set(settingsProviderChoice.rawValue, forKey: SettingsKeys.selectedProvider)
-        defaults.set(otherProviderLabel, forKey: SettingsKeys.otherProviderLabel)
-        defaults.set(otherProviderNotes, forKey: SettingsKeys.otherProviderNotes)
+        defaults.set(maxTokens, forKey: SettingsKeys.maxTokens)
+        defaults.set(legislatorTemperature, forKey: SettingsKeys.legislatorTemperature)
+        defaults.set(loopholeFinderTemperature, forKey: SettingsKeys.loopholeFinderTemperature)
+        defaults.set(overreachFinderTemperature, forKey: SettingsKeys.overreachFinderTemperature)
+        defaults.set(judgeTemperature, forKey: SettingsKeys.judgeTemperature)
+        defaults.set(defaultMaxRounds, forKey: SettingsKeys.defaultMaxRounds)
         defaults.set(casesPerAgent, forKey: SettingsKeys.casesPerAgent)
+
+        if draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           draft.domain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           draft.principles.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft.maxRounds = defaultMaxRounds
+        }
     }
 
     func showNewSession() {
@@ -109,7 +129,17 @@ final class AppModel: ObservableObject {
             guard !session.hasReviewedDraft else { return }
             session.hasReviewedDraft = true
             persist(session)
-            await continueSession()
+            await continueSession(skipCaseReviewGate: false)
+        }
+    }
+
+    func skipAheadFromDraft() {
+        Task {
+            guard var session = selectedSession else { return }
+            guard !session.hasReviewedDraft else { return }
+            session.hasReviewedDraft = true
+            persist(session)
+            await continueSession(skipCaseReviewGate: true)
         }
     }
 
@@ -179,14 +209,27 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func openSavedSessionsFolder() {
+        NSWorkspace.shared.open(store.folderURL)
+    }
+
     private func client(for mode: ProviderMode) -> LoopholeClient {
+        let settings = LiveModelSettings(
+            maxTokens: maxTokens,
+            legislatorTemperature: legislatorTemperature,
+            loopholeFinderTemperature: loopholeFinderTemperature,
+            overreachFinderTemperature: overreachFinderTemperature,
+            judgeTemperature: judgeTemperature,
+            validationTemperature: 0.2
+        )
+
         switch mode {
         case .guidedDemo:
             return DemoClient()
         case .anthropic:
-            return AnthropicClient(apiKey: anthropicAPIKey, model: anthropicModel)
+            return AnthropicClient(apiKey: anthropicAPIKey, model: anthropicModel, settings: settings)
         case .openAI:
-            return OpenAIClient(apiKey: openAIAPIKey, model: openAIModel)
+            return OpenAIClient(apiKey: openAIAPIKey, model: openAIModel, settings: settings)
         }
     }
 
@@ -222,6 +265,7 @@ final class AppModel: ObservableObject {
                 cases: [],
                 queuedCaseIDs: [],
                 currentQueueIndex: 0,
+                awaitingCaseReview: false,
                 userClarifications: [],
                 createdAt: Date(),
                 updatedAt: Date()
@@ -246,7 +290,7 @@ final class AppModel: ObservableObject {
         isWorking = false
     }
 
-    private func continueSession() async {
+    private func continueSession(skipCaseReviewGate: Bool = false) async {
         guard var session = selectedSession else { return }
         guard !isWorking else { return }
 
@@ -258,35 +302,46 @@ final class AppModel: ObservableObject {
                 throw LoopholeClientError.invalidState("This round is waiting for the user's decision before it can continue.")
             }
 
-            if session.hasPendingQueue {
+            if session.awaitingCaseReview {
+                session.awaitingCaseReview = false
+                persist(session)
+                try await processQueuedCases(for: &session)
+            } else if session.hasPendingQueue {
                 try await processQueuedCases(for: &session)
             } else {
-                guard session.currentRound < session.maxRounds else {
-                    session.stage = .completed
-                    persist(session)
-                    isWorking = false
-                    return
-                }
-
-                session.currentRound += 1
-                session.stage = .findingLoopholes
-
-                let loopholes = try await client(for: session.providerMode).findCases(kind: .loophole, session: session, casesPerAgent: casesPerAgent)
-                session.stage = .findingOverreach
-                let overreaches = try await client(for: session.providerMode).findCases(kind: .overreach, session: session, casesPerAgent: casesPerAgent)
-
-                session.cases.append(contentsOf: loopholes + overreaches)
-                session.queuedCaseIDs = (loopholes + overreaches).map(\.id)
-                session.currentQueueIndex = 0
-                persist(session)
-
-                try await processQueuedCases(for: &session)
+                try await launchRound(for: &session, skipCaseReviewGate: skipCaseReviewGate)
             }
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isWorking = false
+    }
+
+    private func launchRound(for session: inout SessionRecord, skipCaseReviewGate: Bool) async throws {
+        guard session.currentRound < session.maxRounds else {
+            session.stage = .completed
+            persist(session)
+            isWorking = false
+            return
+        }
+
+        session.currentRound += 1
+        session.stage = .findingLoopholes
+
+        let loopholes = try await client(for: session.providerMode).findCases(kind: .loophole, session: session, casesPerAgent: casesPerAgent)
+        session.stage = .findingOverreach
+        let overreaches = try await client(for: session.providerMode).findCases(kind: .overreach, session: session, casesPerAgent: casesPerAgent)
+
+        session.cases.append(contentsOf: loopholes + overreaches)
+        session.queuedCaseIDs = (loopholes + overreaches).map(\.id)
+        session.currentQueueIndex = 0
+        session.awaitingCaseReview = !skipCaseReviewGate
+        persist(session)
+
+        if !session.awaitingCaseReview {
+            try await processQueuedCases(for: &session)
+        }
     }
 
     private func processQueuedCases(for session: inout SessionRecord) async throws {
@@ -348,6 +403,7 @@ final class AppModel: ObservableObject {
 
         session.queuedCaseIDs = []
         session.currentQueueIndex = 0
+        session.awaitingCaseReview = false
         session.stage = session.currentRound >= session.maxRounds ? .completed : .roundComplete
         persist(session)
     }
@@ -378,6 +434,7 @@ final class AppModel: ObservableObject {
             session.currentCode = revised
             session.codeHistory.append(revised)
             session.currentQueueIndex += 1
+            session.awaitingCaseReview = false
 
             persist(session)
             try await processQueuedCases(for: &session)
@@ -414,7 +471,7 @@ final class AppModel: ObservableObject {
     }
 
     private func resetDraft() {
-        draft = SessionDraft()
+        draft = SessionDraft(maxRounds: defaultMaxRounds)
     }
 
     private func filterSessions(isArchived: Bool) -> [SessionRecord] {

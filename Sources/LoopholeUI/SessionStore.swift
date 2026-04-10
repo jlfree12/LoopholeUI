@@ -1,16 +1,16 @@
 import Foundation
 
 struct SessionStore {
-    private let rootURL: URL
+    let folderURL: URL
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        self.rootURL = appSupport.appendingPathComponent("LoopholeUI", isDirectory: true)
+        self.folderURL = appSupport.appendingPathComponent("LoopholeUI", isDirectory: true)
     }
 
     func loadSessions() -> [SessionRecord] {
         ensureFolder()
-        let files = (try? FileManager.default.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: nil, options: [])) ?? []
+        let files = (try? FileManager.default.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil, options: [])) ?? []
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
@@ -31,7 +31,7 @@ struct SessionStore {
     }
 
     private func fileURL(for id: String) -> URL {
-        rootURL.appendingPathComponent("\(id).json")
+        folderURL.appendingPathComponent("\(id).json")
     }
 
     func delete(id: String) throws {
@@ -41,6 +41,6 @@ struct SessionStore {
     }
 
     private func ensureFolder() {
-        try? FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true, attributes: nil)
+        try? FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true, attributes: nil)
     }
 }
