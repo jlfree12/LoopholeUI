@@ -4,11 +4,11 @@ from pathlib import Path
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old in text:
+        return text.replace(old, new, 1)
     if new in text:
         return text
-    if old not in text:
-        raise SystemExit(f"Expected pattern for {label!r} was not found.")
-    return text.replace(old, new, 1)
+    raise SystemExit(f"Expected pattern for {label!r} was not found.")
 
 
 def main() -> None:
