@@ -123,7 +123,7 @@ final class AppModel: ObservableObject {
 
             session.currentCode = initialCode
             session.codeHistory = [initialCode]
-            session.stage = .roundComplete
+            session.stage = .drafting
             persist(session)
             resetDraft()
             selection = .session(session.id)
